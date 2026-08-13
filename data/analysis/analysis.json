@@ -1,0 +1,658 @@
+{
+  "target": "PER",
+  "benchmark": "VER",
+  "lap": 61,
+  "confidence": "HIGH",
+  "tyres": {
+    "target": {
+      "compound": "MEDIUM",
+      "age": 21
+    },
+    "benchmark": {
+      "compound": "MEDIUM",
+      "age": 20
+    }
+  },
+  "sectors": {
+    "S1": 0.259999999999998,
+    "S2": 0.25800000000000267,
+    "S3": 0.015000000000000568,
+    "Lap": 0.5330000000000013
+  },
+  "corners": {
+    "T1": {
+      "measured_time_delta": -0.07899999999999974,
+      "entry_speed_delta": 37,
+      "brake_point_delta_m": -0.7204912807474068,
+      "minimum_speed_delta": -3,
+      "throttle_delay_delta": 0,
+      "primary_factor": "EQUIVALENT",
+      "target": {
+        "entry_speed": 193,
+        "min_speed": 79,
+        "throttle_delay": 0
+      },
+      "benchmark": {
+        "entry_speed": 156,
+        "min_speed": 82,
+        "throttle_delay": 0
+      }
+    },
+    "T3": {
+      "measured_time_delta": 0.16000000000000014,
+      "entry_speed_delta": -21,
+      "brake_point_delta_m": -0.274378834923491,
+      "minimum_speed_delta": -12,
+      "throttle_delay_delta": -0.48,
+      "primary_factor": "SLOW APEX",
+      "target": {
+        "entry_speed": 193,
+        "min_speed": 135,
+        "throttle_delay": 0.96
+      },
+      "benchmark": {
+        "entry_speed": 214,
+        "min_speed": 147,
+        "throttle_delay": 1.44
+      }
+    },
+    "T5": {
+      "measured_time_delta": -0.22000000000000064,
+      "entry_speed_delta": -6,
+      "brake_point_delta_m": 6.6370190668998585,
+      "minimum_speed_delta": 0,
+      "throttle_delay_delta": 0.2799999999999998,
+      "primary_factor": "LATE BRAKING",
+      "target": {
+        "entry_speed": 138,
+        "min_speed": 108,
+        "throttle_delay": 1.3599999999999999
+      },
+      "benchmark": {
+        "entry_speed": 144,
+        "min_speed": 108,
+        "throttle_delay": 1.08
+      }
+    },
+    "T7": {
+      "measured_time_delta": -0.0990000000000002,
+      "entry_speed_delta": -1,
+      "brake_point_delta_m": -2.449824849264038,
+      "minimum_speed_delta": -5,
+      "throttle_delay_delta": 0.020000000000000018,
+      "primary_factor": "SLOW APEX",
+      "target": {
+        "entry_speed": 116,
+        "min_speed": 67,
+        "throttle_delay": 2.601
+      },
+      "benchmark": {
+        "entry_speed": 117,
+        "min_speed": 72,
+        "throttle_delay": 2.581
+      }
+    },
+    "T8": {
+      "measured_time_delta": 0.10000000000000009,
+      "entry_speed_delta": 9,
+      "brake_point_delta_m": -6.984045741304703,
+      "minimum_speed_delta": -1,
+      "throttle_delay_delta": -0.26,
+      "primary_factor": "EARLY BRAKING",
+      "target": {
+        "entry_speed": 149,
+        "min_speed": 116,
+        "throttle_delay": 1.181
+      },
+      "benchmark": {
+        "entry_speed": 140,
+        "min_speed": 117,
+        "throttle_delay": 1.441
+      }
+    },
+    "T10": {
+      "measured_time_delta": 0.2610000000000001,
+      "entry_speed_delta": 1,
+      "brake_point_delta_m": 0,
+      "minimum_speed_delta": -4,
+      "throttle_delay_delta": -0.09999999999999998,
+      "primary_factor": "SLOW APEX",
+      "target": {
+        "entry_speed": 166,
+        "min_speed": 101,
+        "throttle_delay": 0.859
+      },
+      "benchmark": {
+        "entry_speed": 165,
+        "min_speed": 105,
+        "throttle_delay": 0.959
+      }
+    },
+    "T13": {
+      "measured_time_delta": 0.33999999999999986,
+      "entry_speed_delta": 7,
+      "brake_point_delta_m": -4.24574285105005,
+      "minimum_speed_delta": 0,
+      "throttle_delay_delta": -0.019000000000000128,
+      "primary_factor": "EARLY BRAKING",
+      "target": {
+        "entry_speed": 156,
+        "min_speed": 63,
+        "throttle_delay": 2.761
+      },
+      "benchmark": {
+        "entry_speed": 149,
+        "min_speed": 63,
+        "throttle_delay": 2.7800000000000002
+      }
+    },
+    "T14": {
+      "measured_time_delta": 0.2400000000000002,
+      "entry_speed_delta": 6,
+      "brake_point_delta_m": 3.1953993674480574,
+      "minimum_speed_delta": -3,
+      "throttle_delay_delta": -0.6189999999999998,
+      "primary_factor": "LATE BRAKING",
+      "target": {
+        "entry_speed": 213,
+        "min_speed": 82,
+        "throttle_delay": 1.6800000000000002
+      },
+      "benchmark": {
+        "entry_speed": 207,
+        "min_speed": 85,
+        "throttle_delay": 2.299
+      }
+    },
+    "T16": {
+      "measured_time_delta": 0.020000000000000018,
+      "entry_speed_delta": 4,
+      "brake_point_delta_m": 0,
+      "minimum_speed_delta": 0,
+      "throttle_delay_delta": 0.0,
+      "primary_factor": "EQUIVALENT",
+      "target": {
+        "entry_speed": 261,
+        "min_speed": 243,
+        "throttle_delay": 0.0
+      },
+      "benchmark": {
+        "entry_speed": 257,
+        "min_speed": 243,
+        "throttle_delay": 0.0
+      }
+    },
+    "T18": {
+      "measured_time_delta": -0.16000000000000014,
+      "entry_speed_delta": -24,
+      "brake_point_delta_m": 13.313579806113875,
+      "minimum_speed_delta": -2,
+      "throttle_delay_delta": 0.43999999999999995,
+      "primary_factor": "LATE BRAKING",
+      "target": {
+        "entry_speed": 201,
+        "min_speed": 100,
+        "throttle_delay": 3.339
+      },
+      "benchmark": {
+        "entry_speed": 225,
+        "min_speed": 102,
+        "throttle_delay": 2.899
+      }
+    },
+    "T19": {
+      "measured_time_delta": -0.05999999999999961,
+      "entry_speed_delta": -1,
+      "brake_point_delta_m": 4.312284288007646,
+      "minimum_speed_delta": -8,
+      "throttle_delay_delta": -0.019999999999999907,
+      "primary_factor": "LATE BRAKING",
+      "target": {
+        "entry_speed": 243,
+        "min_speed": 190,
+        "throttle_delay": 0.68
+      },
+      "benchmark": {
+        "entry_speed": 244,
+        "min_speed": 198,
+        "throttle_delay": 0.7
+      }
+    }
+  },
+  "lap_delta": [
+    {
+      "progress": 0.01,
+      "delta": 0.015769303949230262
+    },
+    {
+      "progress": 0.0198989898989899,
+      "delta": -0.007850464589404194
+    },
+    {
+      "progress": 0.029797979797979796,
+      "delta": 0.0897078252512793
+    },
+    {
+      "progress": 0.039696969696969696,
+      "delta": 0.04072829732790684
+    },
+    {
+      "progress": 0.049595959595959596,
+      "delta": 0.1017168201512022
+    },
+    {
+      "progress": 0.059494949494949496,
+      "delta": 0.12267150939913796
+    },
+    {
+      "progress": 0.06939393939393938,
+      "delta": -0.01987695856574412
+    },
+    {
+      "progress": 0.07929292929292929,
+      "delta": -0.14949697329335532
+    },
+    {
+      "progress": 0.08919191919191918,
+      "delta": -0.17353015762356439
+    },
+    {
+      "progress": 0.09909090909090908,
+      "delta": 0.0700084405939636
+    },
+    {
+      "progress": 0.10898989898989898,
+      "delta": -0.060736570613281415
+    },
+    {
+      "progress": 0.11888888888888888,
+      "delta": 0.08203667532267289
+    },
+    {
+      "progress": 0.12878787878787878,
+      "delta": 0.003291345826822223
+    },
+    {
+      "progress": 0.1386868686868687,
+      "delta": 0.05838626671649649
+    },
+    {
+      "progress": 0.1485858585858586,
+      "delta": -0.01030370584149054
+    },
+    {
+      "progress": 0.15848484848484848,
+      "delta": 0.16268205199300034
+    },
+    {
+      "progress": 0.16838383838383839,
+      "delta": 0.011835275755419872
+    },
+    {
+      "progress": 0.1782828282828283,
+      "delta": 0.23238940595676283
+    },
+    {
+      "progress": 0.18818181818181817,
+      "delta": 0.16589782636441086
+    },
+    {
+      "progress": 0.19808080808080808,
+      "delta": 0.30318711784901
+    },
+    {
+      "progress": 0.207979797979798,
+      "delta": 0.2727025144805708
+    },
+    {
+      "progress": 0.21787878787878787,
+      "delta": 0.15095552854885952
+    },
+    {
+      "progress": 0.22777777777777777,
+      "delta": 0.19985248343619233
+    },
+    {
+      "progress": 0.23767676767676768,
+      "delta": 0.21271687150537488
+    },
+    {
+      "progress": 0.24757575757575756,
+      "delta": 0.15154307342305984
+    },
+    {
+      "progress": 0.25747474747474747,
+      "delta": 0.2643043916476451
+    },
+    {
+      "progress": 0.2673737373737374,
+      "delta": 0.36633794966877176
+    },
+    {
+      "progress": 0.2772727272727273,
+      "delta": 0.19660157312236848
+    },
+    {
+      "progress": 0.2871717171717172,
+      "delta": 0.32413587580077774
+    },
+    {
+      "progress": 0.29707070707070704,
+      "delta": 0.27599101725028063
+    },
+    {
+      "progress": 0.30696969696969695,
+      "delta": 0.2369062626155305
+    },
+    {
+      "progress": 0.31686868686868686,
+      "delta": 0.3738087904433378
+    },
+    {
+      "progress": 0.32676767676767676,
+      "delta": 0.2603845647298968
+    },
+    {
+      "progress": 0.33666666666666667,
+      "delta": 0.292834036085047
+    },
+    {
+      "progress": 0.3465656565656566,
+      "delta": 0.393793463659442
+    },
+    {
+      "progress": 0.3564646464646465,
+      "delta": 0.256781033510201
+    },
+    {
+      "progress": 0.36636363636363634,
+      "delta": 0.24214720746829954
+    },
+    {
+      "progress": 0.37626262626262624,
+      "delta": 0.19438132332443558
+    },
+    {
+      "progress": 0.38616161616161615,
+      "delta": 0.20145042625483
+    },
+    {
+      "progress": 0.39606060606060606,
+      "delta": 0.347540033289377
+    },
+    {
+      "progress": 0.40595959595959596,
+      "delta": 0.27302098025914034
+    },
+    {
+      "progress": 0.41585858585858587,
+      "delta": 0.3346986769331721
+    },
+    {
+      "progress": 0.4257575757575757,
+      "delta": 0.2691319309976805
+    },
+    {
+      "progress": 0.43565656565656563,
+      "delta": 0.4040428225090196
+    },
+    {
+      "progress": 0.44555555555555554,
+      "delta": 0.44943289214058524
+    },
+    {
+      "progress": 0.45545454545454545,
+      "delta": 0.32987631524864014
+    },
+    {
+      "progress": 0.46535353535353535,
+      "delta": 0.3906175291686722
+    },
+    {
+      "progress": 0.47525252525252526,
+      "delta": 0.4458466374705736
+    },
+    {
+      "progress": 0.4851515151515151,
+      "delta": 0.4337456712905521
+    },
+    {
+      "progress": 0.495050505050505,
+      "delta": 0.39393451546705194
+    },
+    {
+      "progress": 0.5049494949494949,
+      "delta": 0.41988227557703084
+    },
+    {
+      "progress": 0.5148484848484849,
+      "delta": 0.4232297927000417
+    },
+    {
+      "progress": 0.5247474747474747,
+      "delta": 0.26476525558962294
+    },
+    {
+      "progress": 0.5346464646464646,
+      "delta": 0.33188773931237847
+    },
+    {
+      "progress": 0.5445454545454546,
+      "delta": 0.34884393616628984
+    },
+    {
+      "progress": 0.5544444444444444,
+      "delta": 0.3282850646574005
+    },
+    {
+      "progress": 0.5643434343434344,
+      "delta": 0.2809049096966305
+    },
+    {
+      "progress": 0.5742424242424242,
+      "delta": 0.46897774551462845
+    },
+    {
+      "progress": 0.5841414141414141,
+      "delta": 0.44214280029650865
+    },
+    {
+      "progress": 0.594040404040404,
+      "delta": 0.5110236608649075
+    },
+    {
+      "progress": 0.6039393939393939,
+      "delta": 0.4788448771645335
+    },
+    {
+      "progress": 0.6138383838383838,
+      "delta": 0.4098596323213428
+    },
+    {
+      "progress": 0.6237373737373737,
+      "delta": 0.5555426417942186
+    },
+    {
+      "progress": 0.6336363636363637,
+      "delta": 0.5276370987970296
+    },
+    {
+      "progress": 0.6435353535353535,
+      "delta": 0.42580950743072776
+    },
+    {
+      "progress": 0.6534343434343434,
+      "delta": 0.6998771086736895
+    },
+    {
+      "progress": 0.6633333333333333,
+      "delta": 0.6701568704223746
+    },
+    {
+      "progress": 0.6732323232323232,
+      "delta": 0.4530576219311371
+    },
+    {
+      "progress": 0.6831313131313131,
+      "delta": 0.6822241143571688
+    },
+    {
+      "progress": 0.693030303030303,
+      "delta": 0.5741654093834825
+    },
+    {
+      "progress": 0.702929292929293,
+      "delta": 0.6038360461834458
+    },
+    {
+      "progress": 0.7128282828282828,
+      "delta": 0.508212831680936
+    },
+    {
+      "progress": 0.7227272727272727,
+      "delta": 0.4796469629229705
+    },
+    {
+      "progress": 0.7326262626262626,
+      "delta": 0.5143035256806741
+    },
+    {
+      "progress": 0.7425252525252525,
+      "delta": 0.5917708683134038
+    },
+    {
+      "progress": 0.7524242424242424,
+      "delta": 0.5814385330330509
+    },
+    {
+      "progress": 0.7623232323232323,
+      "delta": 0.5750631535342734
+    },
+    {
+      "progress": 0.7722222222222221,
+      "delta": 0.5119532863991054
+    },
+    {
+      "progress": 0.7821212121212121,
+      "delta": 0.6053975638623825
+    },
+    {
+      "progress": 0.792020202020202,
+      "delta": 0.5678704673439086
+    },
+    {
+      "progress": 0.8019191919191919,
+      "delta": 0.6327038297011427
+    },
+    {
+      "progress": 0.8118181818181818,
+      "delta": 0.7655507730829783
+    },
+    {
+      "progress": 0.8217171717171717,
+      "delta": 0.5575707028787349
+    },
+    {
+      "progress": 0.8316161616161616,
+      "delta": 0.7065581990115817
+    },
+    {
+      "progress": 0.8415151515151514,
+      "delta": 0.6986685488042781
+    },
+    {
+      "progress": 0.8514141414141414,
+      "delta": 0.637034709254209
+    },
+    {
+      "progress": 0.8613131313131313,
+      "delta": 0.7091954585370388
+    },
+    {
+      "progress": 0.8712121212121212,
+      "delta": 0.6350635753556588
+    },
+    {
+      "progress": 0.8811111111111111,
+      "delta": 0.5727108530201406
+    },
+    {
+      "progress": 0.891010101010101,
+      "delta": 0.7338091512065006
+    },
+    {
+      "progress": 0.9009090909090909,
+      "delta": 0.6205820893882219
+    },
+    {
+      "progress": 0.9108080808080807,
+      "delta": 0.6420056271199996
+    },
+    {
+      "progress": 0.9207070707070707,
+      "delta": 0.6431380368738786
+    },
+    {
+      "progress": 0.9306060606060605,
+      "delta": 0.523785112445438
+    },
+    {
+      "progress": 0.9405050505050505,
+      "delta": 0.703467364817655
+    },
+    {
+      "progress": 0.9504040404040404,
+      "delta": 0.6151201002940496
+    },
+    {
+      "progress": 0.9603030303030302,
+      "delta": 0.6636415835196914
+    },
+    {
+      "progress": 0.9702020202020202,
+      "delta": 0.5857010676190697
+    },
+    {
+      "progress": 0.98010101010101,
+      "delta": 0.6393932118718908
+    },
+    {
+      "progress": 0.99,
+      "delta": 0.6265029554027706
+    }
+  ],
+  "fingerprint": {
+    "target": {
+      "entry_commitment": 80,
+      "brake_release": 65,
+      "min_speed": 75,
+      "throttle_pickup": 70,
+      "exit_acceleration": 85
+    },
+    "benchmark": {
+      "entry_commitment": 85,
+      "brake_release": 90,
+      "min_speed": 80,
+      "throttle_pickup": 85,
+      "exit_acceleration": 85
+    }
+  },
+  "radio": {
+    "corner": "T5",
+    "progress": 0.33,
+    "text": "The rear is really unstable",
+    "stress": 85,
+    "frustration": 60,
+    "fatigue": 40
+  },
+  "ai_analysis": {
+    "corner": "T5",
+    "observed": [
+      "Entry speed -6 km/h",
+      "Brake point later by 7m",
+      "Throttle delay +0.28s"
+    ],
+    "interpretation": "Driver reports rear instability immediately before the performance deficit at T5. Early braking and delayed throttle confirm a loss of confidence on entry.",
+    "recommendation": "Preserve entry speed and focus on progressive brake release. Adjust brake bias forward slightly if rear instability persists."
+  }
+}
