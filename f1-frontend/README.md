@@ -1,32 +1,90 @@
-# React + TypeScript + Vite
+# F1 Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This package contains the React application that presents the Grand Prix racing intelligence experience. It focuses on a polished visual shell, live telemetry views, radio-driven storytelling, and route-based experiences for analysis and voice interaction.
 
-Currently, two official plugins are available:
+## What this app provides
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- A home experience that stitches together the hero, mission, voice, replay, driver, montage, and closing sections.
+- A live intelligence page that visualizes telemetry-driven race analysis.
+- A voice page that presents radio intelligence and transcript-led interaction.
+- A local proxy to the Python backend so the frontend can call `/api` routes during development.
 
-## React Compiler
+## Technology stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS v4
+- React Router
+- GSAP and Motion for animation
+- Three.js and OGL for visual effects
 
-## Expanding the Oxlint configuration
+## Development scripts
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+From this directory:
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Other available scripts:
+
+```bash
+npm run build
+npm run lint
+npm run preview
+```
+
+## Local backend proxy
+
+The Vite dev server forwards requests from `/api` to `http://localhost:8000`.
+
+That means the typical local workflow is:
+
+1. Start the backend server from `backend/`.
+2. Start the frontend from `f1-frontend/`.
+3. Open the Vite development URL in the browser.
+
+## Routes
+
+The application routes are defined in `src/App.tsx`:
+
+- `/` home page.
+- `/live` live intelligence page.
+- `/voice` voice intelligence page.
+
+## Directory overview
+
+- `src/App.tsx` configures routing and loader state.
+- `src/pages/` contains route-level views.
+- `src/components/sections/` contains narrative page sections.
+- `src/components/ui/` contains shared UI primitives.
+- `src/lib/` contains API helpers and shared utilities.
+- `src/utils/` contains small application-specific helpers.
+
+## Build notes
+
+The production build runs TypeScript compilation first and then Vite bundling:
+
+```bash
+npm run build
+```
+
+If you change shared UI primitives or route-level pages, run the build before committing to catch type or bundling issues early.
+
+## Styling and layout
+
+- The app uses a dark racing theme with custom typography and motion.
+- Page-level sections are assembled in `src/pages/Home.tsx`.
+- The shell is intentionally minimal so the content sections and visual treatments remain prominent.
+
+## Frontend-backend integration
+
+The frontend consumes the backend endpoints documented in the repository root README and exposed by `backend/main.py`. The most important calls are for grid data, replay data, live analysis, radio intelligence, and race-engineer advice.
+
+## Notes
+
+- This package is intended to be run alongside the Python backend.
+- The frontend does not manage persistent application data on its own.
+- Large data assets live in the repository-level `data/` directory and are served indirectly through the backend.
