@@ -1,14 +1,32 @@
-import { useState } from 'react';
-import { DRIVERS } from '@/data/mockData';
+import { useState, useEffect } from 'react';
 import { Users, X } from 'lucide-react';
 import DriftWall from '@/components/ui/DriftWall';
 import { AnimatePresence, motion } from 'motion/react';
+import { fetchGrid, type Driver } from '@/lib/api';
 
 export function Drivers() {
-  const [selectedDriver, setSelectedDriver] = useState<typeof DRIVERS[0] | null>(null);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+  const [driversData, setDriversData] = useState<Driver[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadDrivers() {
+      try {
+        const data = await fetchGrid();
+        setDriversData(data);
+      } catch (err) {
+        console.error("Failed to fetch drivers:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadDrivers();
+  }, []);
 
   // Multiply drivers to fill the wall if needed
-  const wallDrivers = [...DRIVERS, ...DRIVERS, ...DRIVERS, ...DRIVERS, ...DRIVERS, ...DRIVERS];
+  const wallDrivers = driversData.length > 0
+    ? [...driversData, ...driversData, ...driversData, ...driversData, ...driversData, ...driversData]
+    : [];
 
   const items = wallDrivers.map((driver, index) => ({
     image: driver.headshot_url,
@@ -29,20 +47,22 @@ export function Drivers() {
           20 drivers. 20 distinct stress signatures.
         </p>
       </div>
-      
+
       <div className="h-[600px] w-full relative">
         <div className="absolute inset-0 bg-gradient-to-b from-asphalt via-transparent to-asphalt z-10 pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-r from-asphalt via-transparent to-asphalt z-10 pointer-events-none" />
-        <DriftWall 
-          items={items} 
-          pauseOnHover={true} 
-          speed={0.5} 
-          columns={8}
-          tileWidth={250}
-          tileHeight={350}
-          grayscale={true}
-          dim={0.7}
-        />
+        {!isLoading && items.length > 0 && (
+          <DriftWall
+            items={items}
+            pauseOnHover={true}
+            speed={0.5}
+            columns={8}
+            tileWidth={250}
+            tileHeight={350}
+            grayscale={true}
+            dim={0.7}
+          />
+        )}
       </div>
 
       {/* Driver Detail Modal */}
@@ -69,14 +89,14 @@ export function Drivers() {
               >
                 <X className="w-6 h-6" />
               </button>
-              
-              <div 
+
+              <div
                 className="w-full md:w-1/2 h-[400px] md:h-[500px] relative overflow-hidden"
                 style={{ backgroundColor: selectedDriver.team_colour ? `#${selectedDriver.team_colour}20` : '#1a1a24' }}
               >
-                <img 
-                  src={selectedDriver.headshot_url} 
-                  alt={selectedDriver.full_name} 
+                <img
+                  src={selectedDriver.headshot_url}
+                  alt={selectedDriver.full_name}
                   className="w-full h-full object-contain object-bottom"
                 />
               </div>
@@ -86,16 +106,16 @@ export function Drivers() {
                   <span className="font-display text-5xl md:text-7xl font-black text-chrome/30">
                     {selectedDriver.driver_number}
                   </span>
-                  <div 
-                    className="h-8 w-2 rounded-full" 
+                  <div
+                    className="h-8 w-2 rounded-full"
                     style={{ backgroundColor: selectedDriver.team_colour ? `#${selectedDriver.team_colour}` : '#ffffff' }}
                   />
                 </div>
-                
+
                 <h3 className="font-display text-4xl font-bold uppercase text-ink mb-2">
                   {selectedDriver.full_name}
                 </h3>
-                
+
                 <p className="font-body text-xl text-ink-muted mb-6">
                   {selectedDriver.team_name}
                 </p>
@@ -108,8 +128,8 @@ export function Drivers() {
                   <div className="flex items-center justify-between border-b border-chrome/10 pb-4">
                     <span className="text-chrome font-body uppercase text-sm tracking-wider">Team</span>
                     <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
+                      <div
+                        className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: selectedDriver.team_colour ? `#${selectedDriver.team_colour}` : '#ffffff' }}
                       />
                       <span className="text-ink font-bold">{selectedDriver.team_name}</span>

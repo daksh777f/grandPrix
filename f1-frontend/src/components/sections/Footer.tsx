@@ -24,7 +24,7 @@ export function Footer() {
             ZERO-PIT Replay Engine
           </a>
           <a
-            href="https://github.com/your-repo/f1-frontend"
+            href="https://github.com/daksh777f/grandPrix"
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 text-ink-muted hover:text-ink transition-colors font-body text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-2 py-1"

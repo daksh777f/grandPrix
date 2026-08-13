@@ -9,40 +9,40 @@ const HISTORY_ARTICLES = [
     year: "1950",
     title: "The Birth of a Championship",
     description: "Inaugurated at Silverstone, the first F1 cars were largely pre-war designs. Front-engined, heavy, and raw. The Alfa Romeo 158 dominated, producing around 350 bhp from a 1.5-litre supercharged straight-8. No downforce. No seatbelts. Just pure mechanical grip.",
-    image: "https://images.unsplash.com/photo-1541348263662-e06836264be8?auto=format&fit=crop&q=80"
+    image: "https://images.unsplash.com/photo-1517581177682-a085bb7ffb15?auto=format&fit=crop&q=80&w=800"
   },
   {
     year: "1980s",
     title: "The Turbo Era & Ground Effect",
     description: "Aerodynamics took over. Engineers discovered ground effect, sucking cars to the track for cornering speeds previously unimaginable. Engines shrank to 1.5 litres but strapped on massive turbos, peaking at over 1,000 bhp in qualifying. The cars became wider, lower, and terrifyingly fast.",
-    image: "https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&q=80"
+    image: "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&q=80&w=800"
   },
   {
     year: "2026",
     title: "The Next Generation",
     description: "Agility returns. The 2026 regulations aim to create smaller, lighter, and more nimble cars. Active aerodynamics will reduce drag on the straights and increase downforce in the corners. Power units will shift to a 50/50 split between internal combustion and electric power, running on 100% sustainable fuels.",
-    image: "https://images.unsplash.com/photo-1532598375990-2da8de4cc7fc?auto=format&fit=crop&q=80"
+    image: "https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&q=80&w=800"
   }
 ];
 
 export function Montage() {
   const sectionRef = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     const mm = gsap.matchMedia();
-    
+
     mm.add("(prefers-reduced-motion: no-preference)", () => {
       const items = gsap.utils.toArray('.history-item') as HTMLElement[];
-      
+
       items.forEach((item) => {
         const image = item.querySelector('.history-image');
         const textWrapper = item.querySelector('.history-text');
-        
+
         if (image) {
-          gsap.fromTo(image, 
+          gsap.fromTo(image,
             { y: -30, scale: 1.1 },
-            { 
-              y: 30, 
+            {
+              y: 30,
               scale: 1,
               ease: "none",
               scrollTrigger: {
@@ -90,15 +90,15 @@ export function Montage() {
 
         <div className="flex flex-col gap-32">
           {HISTORY_ARTICLES.map((article, idx) => (
-            <div 
-              key={idx} 
+            <div
+              key={idx}
               className={`history-item flex flex-col ${idx % 2 !== 0 ? 'md:flex-row-reverse' : 'md:flex-row'} items-center gap-12 md:gap-20`}
             >
               <div className="w-full md:w-1/2">
                 <div className="aspect-[4/3] overflow-hidden rounded-xl bg-chrome/20 relative shadow-2xl">
-                  <img 
-                    src={article.image} 
-                    alt={article.title} 
+                  <img
+                    src={article.image}
+                    alt={article.title}
                     className="history-image w-full h-full object-cover origin-center"
                   />
                   {/* Subtle year overlay */}

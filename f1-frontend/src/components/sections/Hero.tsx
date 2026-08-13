@@ -26,7 +26,7 @@ export function Hero() {
   };
 
   return (
-    <section 
+    <section
       onMouseMove={handleMouseMove}
       className="relative w-full min-h-screen bg-asphalt overflow-hidden flex flex-col justify-between items-center z-10 pt-20 pb-12"
     >
@@ -133,16 +133,22 @@ export function Hero() {
             className="flex flex-wrap items-center gap-4"
           >
             <a
-              href="#inspector"
+              href="#voice"
               className="px-8 py-4 rounded-full bg-brand-red text-white font-body font-bold text-sm uppercase tracking-wider hover:scale-105 transition-transform shadow-[0_0_25px_#e10600]"
             >
-              Inspect 3D Chassis
+              The Silent Co-Driver
             </a>
             <a
-              href="#voice"
+              href="/live"
               className="px-8 py-4 rounded-full bg-white/10 border border-white/20 text-white font-body font-bold text-sm uppercase tracking-wider hover:bg-white/20 transition-colors backdrop-blur-md"
             >
-              Driver Voice AI
+              Live Intelligence →
+            </a>
+            <a
+              href="#replay"
+              className="px-8 py-4 rounded-full bg-white/10 border border-white/20 text-white font-body font-bold text-sm uppercase tracking-wider hover:bg-white/20 transition-colors backdrop-blur-md"
+            >
+              Race Replay
             </a>
           </motion.div>
         </div>
