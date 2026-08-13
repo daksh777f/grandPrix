@@ -47,15 +47,15 @@ export function Loader({ onComplete }: LoaderProps) {
                   key={i}
                   className="absolute bottom-0 w-1 h-1 bg-ink-muted/40 rounded-full"
                   initial={{ y: 0, x: (Math.random() - 0.5) * 40, opacity: 0, scale: 0 }}
-                  animate={{ 
-                    y: -100 - Math.random() * 50, 
+                  animate={{
+                    y: -100 - Math.random() * 50,
                     x: (Math.random() - 0.5) * 60,
                     opacity: [0, 1, 0],
                     scale: [0, Math.random() * 2 + 1, 0]
                   }}
-                  transition={{ 
-                    duration: 1.5 + Math.random(), 
-                    repeat: Infinity, 
+                  transition={{
+                    duration: 1.5 + Math.random(),
+                    repeat: Infinity,
                     delay: Math.random(),
                     ease: 'easeOut'
                   }}
@@ -74,7 +74,7 @@ export function Loader({ onComplete }: LoaderProps) {
             </div>
 
             {/* Status text */}
-            <motion.div 
+            <motion.div
               className="font-mono text-xs text-ink-muted tracking-[0.2em] uppercase"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{ repeat: Infinity, duration: 1.5 }}

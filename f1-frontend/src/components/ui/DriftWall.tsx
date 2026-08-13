@@ -311,7 +311,7 @@ const DriftWall = ({
           className={imgClass}
         />
         <span className={overlayClass} aria-hidden="true" />
-        
+
         {/* Driver Name and Team Color Overlay */}
         {(item.title || item.teamColour) && (
           <div className="absolute inset-[calc(var(--dw-gap)/2)] pointer-events-none flex flex-col justify-end p-4 opacity-0 transition-opacity duration-300 group-hover/tile:opacity-100 group-[.is-active]/tile:opacity-100 group-focus-visible/tile:opacity-100 z-10 rounded-[var(--dw-radius)] overflow-hidden">
@@ -336,14 +336,14 @@ const DriftWall = ({
       );
     }
     return (
-      <div 
-        key={id} 
-        tabIndex={0} 
-        role="button" 
-        aria-label={item.title ?? 'tile'} 
+      <div
+        key={id}
+        tabIndex={0}
+        role="button"
+        aria-label={item.title ?? 'tile'}
         {...commonProps}
         onClick={item.onClick}
-        onPointerDown={(e) => {
+        onPointerDown={() => {
           // Trigger on pointer down for better responsiveness on moving targets
           item.onClick?.();
         }}

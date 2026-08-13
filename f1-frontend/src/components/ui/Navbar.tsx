@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -17,11 +18,27 @@ export function Navbar() {
   }, []);
 
   const navLinks = [
-    { name: 'Voice', href: '/voice' },
-    { name: 'Replay', href: '/replay' },
-    { name: 'Drivers', href: '/drivers' },
-    { name: 'History', href: '/history' },
+    { name: 'Voice', href: '/#voice' },
+    { name: 'Live', href: '/live' },
+    { name: 'Replay', href: '/#replay' },
+    { name: 'Drivers', href: '/#drivers' },
   ];
+
+  const handleNavClick = (href: string) => {
+    setMobileMenuOpen(false);
+
+    // If it's a hash link and we're on the homepage, smooth scroll
+    if (href.startsWith('/#')) {
+      const id = href.replace('/#', '');
+      if (location.pathname === '/') {
+        const el = document.getElementById(id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+      }
+    }
+  };
 
   return (
     <>
@@ -48,11 +65,18 @@ export function Navbar() {
               <Link
                 key={link.name}
                 to={link.href}
+                onClick={() => handleNavClick(link.href)}
                 className="text-sm font-body font-medium text-ink-muted hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-2 py-1"
               >
                 {link.name}
               </Link>
             ))}
+            <Link
+              to="/live"
+              className="px-5 py-2 rounded-full bg-brand-red text-white font-body font-bold text-xs uppercase tracking-wider hover:bg-brand-red/90 transition-all shadow-[0_0_15px_rgba(225,6,0,0.3)]"
+            >
+              Live Intelligence →
+            </Link>
           </div>
 
           {/* Mobile Hamburger Toggle */}
@@ -80,12 +104,19 @@ export function Navbar() {
               <Link
                 key={link.name}
                 to={link.href}
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={() => handleNavClick(link.href)}
                 className="font-display text-4xl font-semibold uppercase text-ink tracking-wider hover:text-brand-red transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-4 py-2"
               >
                 {link.name}
               </Link>
             ))}
+            <Link
+              to="/live"
+              onClick={() => setMobileMenuOpen(false)}
+              className="mt-4 px-8 py-4 rounded-full bg-brand-red text-white font-display font-bold text-xl uppercase tracking-wider"
+            >
+              Live Intelligence →
+            </Link>
           </motion.div>
         )}
       </AnimatePresence>

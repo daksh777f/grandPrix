@@ -23,7 +23,7 @@ class F1AudioEngine {
       if (!this.ctx) return;
 
       const now = this.ctx.currentTime;
-      
+
       const master = this.ctx.createGain();
       master.gain.setValueAtTime(0.15, now);
       master.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
@@ -31,7 +31,7 @@ class F1AudioEngine {
 
       // Fundamental frequency (simulating high RPM V10 engine harmonic series)
       const freqs = [180, 360, 540, 720, 900, 1260];
-      
+
       freqs.forEach((freq, idx) => {
         if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
@@ -39,7 +39,7 @@ class F1AudioEngine {
 
         // Sawtooth & Triangle wave combination for raw metallic exhaust pitch
         osc.type = idx % 2 === 0 ? 'sawtooth' : 'triangle';
-        
+
         // Pitch envelope: Start mid-rpm, scream up, then shift drop
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(freq * 3.5, now + 0.6);
@@ -71,7 +71,7 @@ class F1AudioEngine {
 
     this.stopAll();
     const now = this.ctx.currentTime;
-    
+
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.setValueAtTime(0.05, now);
     this.masterGain.connect(this.ctx.destination);
