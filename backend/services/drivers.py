@@ -13,7 +13,7 @@ def get_drivers_data():
     try:
         df = pd.read_csv(csv_path)
         # We need specific columns expected by the frontend
-        cols = ['driver_number', 'full_name', 'team_name', 'team_colour', 'headshot_url', 'country_code']
+        cols = ['driver_number', 'name_acronym', 'full_name', 'team_name', 'team_colour', 'headshot_url', 'country_code']
 
         # Convert driver_number to int (just to be sure, avoiding floats for integers)
         df['driver_number'] = df['driver_number'].astype(int)

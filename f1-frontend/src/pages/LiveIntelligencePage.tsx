@@ -1,17 +1,112 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Map as MapIcon, ArrowUpRight, ArrowDownRight, RefreshCcw, Cpu } from 'lucide-react';
-import { fetchLiveAnalysis, type LiveAnalysisData } from '@/lib/api';
+import { fetchCompletedComparisonLaps, fetchDefaultBenchmark, fetchGrid, fetchLiveAnalysis, fetchRecentComparisons, fetchVoiceIntelligence, type Driver, type LiveAnalysisData, type RecentLapComparisons, type VoiceIntelligenceMessage } from '@/lib/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { CornerHistoryPanel } from '@/components/sections/CornerHistoryPanel';
+import { LapCoachingPanel } from '@/components/sections/LapCoachingPanel';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
+function voiceContextHref(sessionKey: number, message: VoiceIntelligenceMessage) {
+  const params = new URLSearchParams({
+    session: String(sessionKey),
+    driver: String(message.driver_number),
+    event_id: message.event_id,
+    timestamp: message.timestamp,
+  });
+  if (message.lap !== null) params.set('lap', String(message.lap));
+  if (message.corner) params.set('corner', message.corner);
+  if (message.progress !== null) params.set('progress', message.progress.toFixed(6));
+  if (message.elapsed !== null) params.set('elapsed', message.elapsed.toFixed(3));
+  return `/voice?${params.toString()}`;
+}
+
+interface CoDriverFinding {
+  eventId: string;
+  lap: number;
+  corner: string;
+  phase: string;
+  diagnosis: string;
+  severity: string;
+  estimatedTimeDelta: number | null;
+  message: string;
+  advice: string;
+  elapsed: number;
+  communicationState: "ATTENTION" | "RADIO_NOW";
+  targetDriver: number;
+  benchmarkDriver: number | null;
+}
+
+function formatRaceTime(elapsed: number) {
+  const totalSeconds = Math.max(0, elapsed);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function formatFindingDelta(value: number | null) {
+  if (value === null) return '--';
+  return `${value > 0 ? '+' : ''}${value.toFixed(3)}s`;
+}
 
 export function LiveIntelligencePage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [liveData, setLiveData] = useState<LiveAnalysisData | null>(null);
+  const [voiceMessages, setVoiceMessages] = useState<VoiceIntelligenceMessage[]>([]);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [targetDriver, setTargetDriver] = useState(1);
+  const [benchmarkDriver, setBenchmarkDriver] = useState<number | null>(null);
+  const [recentComparisons, setRecentComparisons] = useState<RecentLapComparisons | null>(null);
+  const [historyLaps, setHistoryLaps] = useState<number[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [coachingLoading, setCoachingLoading] = useState(false);
+  const [coachingError, setCoachingError] = useState<string | null>(null);
+  const [latestFinding, setLatestFinding] = useState<CoDriverFinding | null>(null);
+  const [recentFindings, setRecentFindings] = useState<CoDriverFinding[]>([]);
+  const lastFindingKeyRef = useRef<string | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [currentTick, setCurrentTick] = useState(0);
   const currentTickRef = useRef(0);
   const [selectedCorner, setSelectedCorner] = useState<string | null>(null);
   const [hoverCorner, setHoverCorner] = useState<string | null>(null);
+  const requestedContext = useMemo(() => {
+    const sessionParam = searchParams.get('session');
+    const driverParam = searchParams.get('driver');
+    const lapParam = searchParams.get('lap');
+    const progressParam = searchParams.get('progress');
+    const elapsedParam = searchParams.get('elapsed');
+    return {
+      sessionKey: sessionParam ? Number(sessionParam) : 9165,
+      driverNumber: driverParam ? Number(driverParam) : 1,
+      lap: lapParam ? Number(lapParam) : null,
+      corner: searchParams.get('corner'),
+      progress: progressParam ? Number(progressParam) : null,
+      elapsed: elapsedParam ? Number(elapsedParam) : null,
+      hasContext: Boolean(searchParams.get('event_id') || searchParams.get('lap') || searchParams.get('corner') || searchParams.get('progress') || searchParams.get('elapsed')),
+    };
+  }, [searchParams]);
+
+  useEffect(() => {
+    setTargetDriver(requestedContext.driverNumber);
+  }, [requestedContext.driverNumber]);
+
+  useEffect(() => {
+    fetchGrid()
+      .then(setDrivers)
+      .catch((err) => console.warn('Driver selector data unavailable', err));
+  }, []);
+
+  useEffect(() => {
+    if (!drivers.length || !drivers.some((driver) => driver.driver_number === targetDriver)) return;
+    setBenchmarkDriver(null);
+    fetchDefaultBenchmark(requestedContext.sessionKey, targetDriver)
+      .then((result) => {
+        if (result.benchmark_driver !== targetDriver) setBenchmarkDriver(result.benchmark_driver);
+      })
+      .catch((err) => console.warn('Default benchmark unavailable', err));
+  }, [drivers, requestedContext.sessionKey, targetDriver]);
 
   const trackPath = useMemo(() => {
     if (!liveData || !liveData.samples || liveData.samples.length === 0) return '';
@@ -64,18 +159,68 @@ export function LiveIntelligencePage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const data = await fetchLiveAnalysis(9165, 1);
+        setLiveError(null);
+        const data = await fetchLiveAnalysis(requestedContext.sessionKey, targetDriver);
         setLiveData(data);
+        const nextTick = Math.min(currentTickRef.current, Math.max(0, data.samples.length - 1));
+        currentTickRef.current = nextTick;
+        setCurrentTick(nextTick);
       } catch (err) {
         console.error("Failed to load live analysis data", err);
+        setLiveError("Live Intelligence is unavailable for this session.");
       }
     }
     loadData();
-  }, []);
+  }, [requestedContext.sessionKey, targetDriver]);
+
+  useEffect(() => {
+    let active = true;
+    fetchVoiceIntelligence(requestedContext.sessionKey, targetDriver)
+      .then((data) => {
+        if (active) setVoiceMessages(data.messages);
+      })
+      .catch((err) => {
+        console.warn('Radio context unavailable on live page', err);
+        if (active) setVoiceMessages([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [requestedContext.sessionKey, targetDriver]);
 
   useEffect(() => {
     currentTickRef.current = currentTick;
   }, [currentTick]);
+
+  useEffect(() => {
+    if (!liveData?.samples?.length || !requestedContext.hasContext) return;
+
+    const lapSamples = liveData.samples
+      .map((sample, index) => ({ sample, index }))
+      .filter(({ sample }) => requestedContext.lap === null || sample.lap_number === requestedContext.lap);
+    const cornerSamples = requestedContext.corner
+      ? lapSamples.filter(({ sample }) => sample.current_corner.name === requestedContext.corner)
+      : lapSamples;
+    const candidates = cornerSamples.length ? cornerSamples : lapSamples.length ? lapSamples : liveData.samples.map((sample, index) => ({ sample, index }));
+
+    let closest = candidates[0];
+    if (requestedContext.progress !== null) {
+      closest = candidates.reduce((best, candidate) => {
+        const distance = Math.abs(candidate.sample.progress - requestedContext.progress!);
+        const bestDistance = Math.abs(best.sample.progress - requestedContext.progress!);
+        return distance < bestDistance ? candidate : best;
+      });
+    } else if (requestedContext.elapsed !== null) {
+      closest = candidates.reduce((best, candidate) => {
+        const distance = Math.abs(candidate.sample.elapsed - requestedContext.elapsed!);
+        const bestDistance = Math.abs(best.sample.elapsed - requestedContext.elapsed!);
+        return distance < bestDistance ? candidate : best;
+      });
+    }
+
+    currentTickRef.current = closest.index;
+    setCurrentTick(closest.index);
+  }, [liveData, requestedContext]);
 
   useEffect(() => {
     if (!liveData || !liveData.samples?.length) return;
@@ -140,12 +285,115 @@ export function LiveIntelligencePage() {
 
   const currentSample = liveData?.samples?.[currentTick];
 
+  useEffect(() => {
+    setLatestFinding(null);
+    setRecentFindings([]);
+    lastFindingKeyRef.current = null;
+  }, [targetDriver, benchmarkDriver]);
+
+  useEffect(() => {
+    const sample = currentSample;
+    const communication = sample?.communication;
+    if (!sample || !communication || (communication.state !== 'ATTENTION' && communication.state !== 'RADIO_NOW')) return;
+
+    const diagnosis = sample.analysis.diagnosis;
+    const corner = sample.current_corner.name;
+    const eventKey = `${sample.lap_number}|${corner}|${diagnosis}|${communication.state}`;
+    if (lastFindingKeyRef.current === eventKey) return;
+    lastFindingKeyRef.current = eventKey;
+
+    const finding: CoDriverFinding = {
+      eventId: `co-driver-${eventKey}`,
+      lap: sample.lap_number,
+      corner,
+      phase: sample.current_corner.phase,
+      diagnosis,
+      severity: sample.analysis.severity,
+      estimatedTimeDelta: sample.analysis.estimated_time_delta,
+      message: sample.analysis.message || sample.analysis.advice || 'Observation logged.',
+      advice: sample.analysis.advice || 'Keep pushing.',
+      elapsed: sample.elapsed,
+      communicationState: communication.state,
+      targetDriver,
+      benchmarkDriver,
+    };
+    setLatestFinding(finding);
+    setRecentFindings((previous) => [finding, ...previous.filter((item) => item.eventId !== finding.eventId)].slice(0, 3));
+  }, [benchmarkDriver, currentSample, targetDriver]);
+
+  const completedThroughLap = currentSample ? Math.max(0, currentSample.lap_number - 1) : null;
+
+  useEffect(() => {
+    if (!benchmarkDriver || benchmarkDriver === targetDriver || completedThroughLap === null || completedThroughLap < 1) {
+      setRecentComparisons(null);
+      return;
+    }
+    let active = true;
+    setCoachingLoading(true);
+    setCoachingError(null);
+    fetchRecentComparisons(requestedContext.sessionKey, targetDriver, benchmarkDriver, completedThroughLap, 3)
+      .then((result) => {
+        if (active) setRecentComparisons(result);
+      })
+      .catch((err) => {
+        console.warn('Lap coaching unavailable', err);
+        if (active) {
+          setRecentComparisons(null);
+          setCoachingError('Completed-lap coaching is unavailable.');
+        }
+      })
+      .finally(() => {
+        if (active) setCoachingLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [benchmarkDriver, completedThroughLap, requestedContext.sessionKey, targetDriver]);
+
+  useEffect(() => {
+    if (!benchmarkDriver || benchmarkDriver === targetDriver || completedThroughLap === null || completedThroughLap < 1) {
+      setHistoryLaps([]);
+      setHistoryLoading(false);
+      return;
+    }
+    let active = true;
+    setHistoryLoading(true);
+    fetchCompletedComparisonLaps(requestedContext.sessionKey, targetDriver, benchmarkDriver, completedThroughLap)
+      .then((result) => {
+        if (active) setHistoryLaps(result.laps);
+      })
+      .catch((err) => {
+        console.warn('Completed lap history unavailable', err);
+        if (active) setHistoryLaps([]);
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [benchmarkDriver, completedThroughLap, requestedContext.sessionKey, targetDriver]);
+
+  if (liveData && !liveData.samples?.length) {
+    return (
+      <div className="min-h-screen bg-[#070709] pt-24 pb-12 flex items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-xl border border-chrome/10 bg-[#111316] p-8 text-center font-mono text-xs uppercase tracking-widest text-ink-muted">No historical telemetry is available for this session.</div>
+      </div>
+    );
+  }
+
   if (!currentSample && !liveData) {
     return (
-      <div className="min-h-screen bg-[#070709] pt-24 pb-12 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-chrome/50">
-          <RefreshCcw className="w-8 h-8 animate-spin" />
-          <span className="font-mono text-xs uppercase tracking-widest">Establishing Telemetry Link...</span>
+      <div className="min-h-screen bg-[#070709] pt-24 pb-12 flex items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-xl border border-chrome/10 bg-[#111316] p-8 text-center text-chrome/60">
+          {liveError ? (
+            <span className="font-mono text-xs uppercase tracking-widest">{liveError}</span>
+          ) : (
+            <>
+              <RefreshCcw className="mx-auto mb-4 h-8 w-8 animate-spin" />
+              <span className="font-mono text-xs uppercase tracking-widest">Establishing Telemetry Link...</span>
+            </>
+          )}
         </div>
       </div>
     );
@@ -166,6 +414,10 @@ export function LiveIntelligencePage() {
   } as unknown as import("@/lib/api").LiveAnalysisSample);
 
   const lapNum = safeSample.lap_number || "--";
+  const targetMeta = drivers.find((driver) => driver.driver_number === targetDriver);
+  const benchmarkMeta = drivers.find((driver) => driver.driver_number === benchmarkDriver);
+  const targetAcronym = targetMeta?.name_acronym || `#${targetDriver}`;
+  const benchmarkAcronym = benchmarkMeta?.name_acronym || (benchmarkDriver ? `#${benchmarkDriver}` : '--');
   const normalizedX = liveData ? (100 - safeSample.target.x) : 50;
   const normalizedY = liveData ? safeSample.target.y : 50;
 
@@ -218,19 +470,33 @@ export function LiveIntelligencePage() {
   const instructionMessage = safeSample.analysis.advice || "Keep pushing.";
   const isRadioNow = comm.state === "RADIO_NOW";
 
+  const nearbyRadio = voiceMessages
+    .filter((message) => {
+      if (message.elapsed !== null) {
+        return Math.abs(message.elapsed - safeSample.elapsed) <= 5;
+      }
+      return message.lap === safeSample.lap_number && message.corner === safeSample.current_corner.name;
+    })
+    .sort((left, right) => {
+      if (left.elapsed !== null && right.elapsed !== null) {
+        return Math.abs(left.elapsed - safeSample.elapsed) - Math.abs(right.elapsed - safeSample.elapsed);
+      }
+      return 0;
+    })[0] || null;
+
   return (
     <div className="min-h-screen bg-[#0a0a0c] pt-20 flex flex-col font-body text-ink">
 
       {/* COMPACT TOP BAR */}
-      <div className="w-full bg-[#111316] border-b border-chrome/10 px-6 py-2 flex items-center justify-between shrink-0 fixed top-20 left-0 right-0 z-30">
+      <div className="w-full bg-[#111316] border-b border-chrome/10 px-6 py-2 flex flex-wrap items-center justify-between gap-y-2 shrink-0 fixed top-20 left-0 right-0 z-30">
         <div className="flex items-center gap-4">
-          <span className="font-display font-bold uppercase tracking-widest text-xs text-ink">LIVE INTELLIGENCE</span>
+          <span className="font-display font-bold uppercase tracking-widest text-xs text-ink"><span className="hidden sm:inline">LIVE INTELLIGENCE</span><span className="sm:hidden">LIVE</span></span>
           <span className="hidden sm:inline font-mono text-[9px] text-chrome/50 tracking-[0.2em] uppercase">SINGAPORE GP · RACE · 2023</span>
         </div>
 
-        <div className="flex items-center gap-4 font-mono text-[10px] uppercase tracking-widest">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4 font-mono text-[10px] uppercase tracking-widest">
           <div className="flex items-center gap-1.5 font-bold">
-            <span className="text-[#3671C6]">VER</span>
+            <span className="text-[#3671C6]">{targetAcronym}</span>
             <span className="text-ink flex items-center">
               P{position}
               {ctx.position_event === "POSITION_GAIN" && <ArrowUpRight className="w-3 h-3 text-emerald-400 ml-0.5" />}
@@ -255,13 +521,60 @@ export function LiveIntelligencePage() {
           </div>
           <div className="flex items-center gap-2 text-brand-red animate-pulse border border-brand-red/20 bg-brand-red/10 px-2 py-0.5 rounded-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-red" />
-            <span className="text-[9px] font-bold">LIVE</span>
+            <span className="text-[9px] font-bold">ARCHIVE</span>
           </div>
         </div>
       </div>
 
       {/* DENSE ENGINEERING MAIN AREA */}
       <div className="flex-1 w-full max-w-7xl mx-auto pt-16 pb-20 px-6 flex flex-col justify-center">
+
+        <div className="mb-6 rounded-xl border border-chrome/10 bg-[#111316] p-4 md:p-5">
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="flex min-w-[190px] flex-1 flex-col gap-2">
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">MY DRIVER</span>
+              <select
+                value={targetDriver}
+                onChange={(event) => {
+                  const nextDriver = Number(event.target.value);
+                  setTargetDriver(nextDriver);
+                  setBenchmarkDriver(null);
+                  setLiveData(null);
+                }}
+                className="rounded border border-chrome/20 bg-[#0a0a0c] px-3 py-2 font-mono text-xs uppercase tracking-widest text-ink outline-none focus:border-brand-red"
+              >
+                {drivers.map((driver) => <option key={driver.driver_number} value={driver.driver_number}>{driver.name_acronym} · {driver.team_name} · #{driver.driver_number}</option>)}
+              </select>
+            </label>
+            <div className="hidden pb-2 font-display text-xl text-chrome/30 sm:block">VS</div>
+            <label className="flex min-w-[190px] flex-1 flex-col gap-2">
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">COMPARE AGAINST</span>
+              <select
+                value={benchmarkDriver ?? ''}
+                onChange={(event) => setBenchmarkDriver(Number(event.target.value))}
+                disabled={!drivers.length}
+                className="rounded border border-chrome/20 bg-[#0a0a0c] px-3 py-2 font-mono text-xs uppercase tracking-widest text-ink outline-none focus:border-brand-red disabled:opacity-50"
+              >
+                {benchmarkDriver === null && <option value="">SELECTING BENCHMARK...</option>}
+                {drivers.filter((driver) => driver.driver_number !== targetDriver).map((driver) => <option key={driver.driver_number} value={driver.driver_number}>{driver.name_acronym} · {driver.team_name} · #{driver.driver_number}</option>)}
+              </select>
+            </label>
+            <div className="pb-2 font-mono text-[9px] uppercase tracking-widest text-chrome/50">{targetAcronym} vs {benchmarkAcronym}</div>
+          </div>
+        </div>
+
+        <LapCoachingPanel
+          targetDriver={targetMeta}
+          benchmarkDriver={benchmarkMeta}
+          recent={recentComparisons}
+          loading={coachingLoading || benchmarkDriver === null}
+          error={coachingError}
+          communicationState={String(comm.state)}
+          sessionKey={requestedContext.sessionKey}
+          currentLiveLap={safeSample.lap_number || null}
+          historyLaps={historyLaps}
+          historyLoading={historyLoading}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
 
@@ -340,7 +653,7 @@ export function LiveIntelligencePage() {
 
                   {/* Target Driver */}
                   <circle cx={normalizedX} cy={normalizedY} r="3" fill="#3671C6" style={{ transition: 'all 50ms linear' }} />
-                  <text x={normalizedX + 5} y={normalizedY + 1.5} className="font-mono text-[7px] font-bold" fill="#fff" style={{ transition: 'all 50ms linear' }}>VER</text>
+                   <text x={normalizedX + 5} y={normalizedY + 1.5} className="font-mono text-[7px] font-bold" fill="#fff" style={{ transition: 'all 50ms linear' }}>{targetAcronym}</text>
                  </svg>
                )}
             </div>
@@ -361,11 +674,9 @@ export function LiveIntelligencePage() {
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-1">BEST</div>
-                <div className="font-numeric text-3xl text-ink">
-                  {safeSample.benchmark.speed}
-                  <span className="text-[10px] font-mono text-chrome/50 ml-1 uppercase">km/h</span>
-                </div>
+                <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-1">COMPARE AGAINST</div>
+                <div className="font-display text-2xl font-bold text-ink">{benchmarkAcronym}</div>
+                <span className="text-[10px] font-mono text-chrome/50 uppercase">completed-lap coaching</span>
               </div>
             </div>
 
@@ -406,33 +717,57 @@ export function LiveIntelligencePage() {
           </div>
 
           {/* COLUMN 3: CO-DRIVER BRIEFING */}
-          <div className="bg-[#111316] border border-chrome/10 rounded p-5 flex flex-col relative overflow-hidden">
-            {/* The flashing header is removed as requested by the user, we will just tint the border instead */}
+           <div className="bg-[#111316] border border-chrome/10 rounded p-5 flex flex-col relative overflow-hidden">
+             {/* The flashing header is removed as requested by the user, we will just tint the border instead */}
 
-            <div className="flex items-start justify-between mb-8">
-              <div className={cn(
+             {nearbyRadio && (
+               <div className="mb-6 rounded border border-brand-red/20 bg-brand-red/5 p-3">
+                 <div className="flex items-center justify-between gap-3 mb-2">
+                   <div className="font-mono text-[9px] text-brand-red uppercase tracking-[0.2em]">RADIO · {nearbyRadio.lap ? `L${nearbyRadio.lap}` : 'L--'}</div>
+                   <span className="font-mono text-[9px] text-chrome/50 uppercase">{nearbyRadio.corner || 'NO CORNER'}</span>
+                 </div>
+                 <div className="font-body text-sm text-white/80 leading-snug mb-3">
+                   {nearbyRadio.transcript ? `"${nearbyRadio.transcript}"` : 'Transcript unavailable'}
+                 </div>
+                 <div className="flex items-center justify-between gap-3">
+                   <span className="font-mono text-[9px] text-chrome/50 uppercase tracking-widest">VOICE STATE · {nearbyRadio.voice.voice_state.replace(/_/g, ' ')}</span>
+                   <button
+                     type="button"
+                     onClick={() => navigate(voiceContextHref(requestedContext.sessionKey, nearbyRadio))}
+                     className="inline-flex items-center gap-1 text-chrome/70 hover:text-ink font-mono text-[9px] uppercase tracking-widest transition-colors"
+                   >
+                     View transmission <ArrowUpRight className="w-3 h-3" />
+                   </button>
+                 </div>
+               </div>
+             )}
+
+              <div className="flex items-start justify-between mb-8">
+               <div className={cn(
                 "font-mono text-[9px] uppercase tracking-[0.2em] flex items-center gap-1.5 transition-colors",
                 comm.state === "RADIO_NOW" ? "text-brand-red font-bold" : (comm.state === "ATTENTION" ? "text-amber-400" : "text-chrome/50")
               )}>
                 <Cpu className="w-3 h-3" />
-                CO-DRIVER
+                 CO-DRIVER
                 <span className="ml-1 border-l border-current pl-2">
                   {comm.state === "RADIO_NOW" ? "RADIO NOW" : comm.state}
                 </span>
-              </div>
-            </div>
+               </div>
+             </div>
 
-            <AnimatePresence mode="wait">
+             <div className="font-mono text-[9px] text-chrome/40 uppercase tracking-[0.2em] mb-3">CURRENT LIVE STATE</div>
+
+             <AnimatePresence mode="wait">
               <motion.div
                 key={comm.state + displayDiagnosis}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="flex flex-col flex-1"
-              >
-                {comm.state === "MONITORING" ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center mt-8">
+                 className="flex flex-col"
+               >
+               {comm.state === "MONITORING" ? (
+                   <div className="flex flex-col items-center justify-center py-8 text-center">
                      <div className="font-display text-2xl font-bold uppercase text-chrome/40 mb-2">MONITORING</div>
                      <div className="font-mono text-xs text-chrome/30 uppercase tracking-widest">No instruction required</div>
                   </div>
@@ -510,9 +845,50 @@ export function LiveIntelligencePage() {
                   </>
                 )}
               </motion.div>
-            </AnimatePresence>
+             </AnimatePresence>
 
-          </div>
+             <div className="mt-auto border-t border-chrome/10 pt-5">
+               {latestFinding ? (
+                 <>
+                   <div className={cn("font-mono text-[9px] uppercase tracking-[0.2em] mb-3", latestFinding.communicationState === "RADIO_NOW" ? "text-brand-red" : "text-chrome/50")}>
+                     {latestFinding.communicationState === "RADIO_NOW" ? "LATEST CO-DRIVER CALL" : "LATEST CO-DRIVER FINDING"}
+                   </div>
+                   <button
+                     type="button"
+                     onClick={() => latestFinding.corner !== "Straight" && setSelectedCorner(latestFinding.corner)}
+                     className="w-full text-left rounded border border-chrome/10 bg-white/[0.03] p-3 transition-colors hover:border-chrome/30"
+                   >
+                     <div className="flex items-center justify-between gap-3">
+                       <span className="font-display text-xl font-bold uppercase text-ink">{latestFinding.corner} · {latestFinding.diagnosis.replace(/_/g, ' ')}</span>
+                       <span className={cn("font-mono text-[10px]", latestFinding.communicationState === "RADIO_NOW" ? "text-brand-red" : "text-amber-400")}>{formatFindingDelta(latestFinding.estimatedTimeDelta)}</span>
+                     </div>
+                     <div className="mt-1 font-mono text-[9px] uppercase tracking-widest text-chrome/50">LAP {latestFinding.lap} · {formatRaceTime(latestFinding.elapsed)} · {latestFinding.phase}</div>
+                     <div className="mt-3 font-body text-sm leading-snug text-white/80">"{latestFinding.message}"</div>
+                     <div className="mt-3 border-l-2 border-brand-red/50 pl-3 font-body text-sm font-bold leading-snug text-ink">{latestFinding.advice}</div>
+                   </button>
+                   {recentFindings.length > 1 && (
+                     <div className="mt-4">
+                       <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-chrome/40 mb-2">RECENT FINDINGS</div>
+                       <div className="space-y-1">
+                         {recentFindings.slice(1).map((finding) => (
+                           <button key={finding.eventId} type="button" onClick={() => finding.corner !== "Straight" && setSelectedCorner(finding.corner)} className="flex w-full items-center justify-between gap-3 text-left font-mono text-[9px] uppercase tracking-widest text-chrome/70 hover:text-ink">
+                             <span>{finding.corner} · {finding.diagnosis.replace(/_/g, ' ')}</span>
+                             <span className={finding.communicationState === "RADIO_NOW" ? "text-brand-red" : "text-amber-400"}>{formatFindingDelta(finding.estimatedTimeDelta)}</span>
+                           </button>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                 </>
+               ) : (
+                 <div className="py-5 text-center">
+                   <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-chrome/40">LATEST CO-DRIVER FINDING</div>
+                   <div className="mt-2 font-mono text-[10px] uppercase tracking-widest text-chrome/30">No meaningful event recorded yet</div>
+                 </div>
+               )}
+             </div>
+
+           </div>
 
         </div>
       </div>
@@ -561,8 +937,8 @@ export function LiveIntelligencePage() {
       </div>
 
       <CornerHistoryPanel 
-        sessionKey={9165} 
-        driverNumber={1} 
+        sessionKey={requestedContext.sessionKey} 
+        driverNumber={targetDriver} 
         corner={selectedCorner} 
         liveCorner={safeSample.current_corner.name}
         onClose={() => setSelectedCorner(null)} 

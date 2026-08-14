@@ -1,0 +1,97 @@
+{
+  "9165:1:4:1": {
+    "message": "The largest reliable loss is T15 at +0.560s. The benchmark shows a stronger low entry speed profile at T15.",
+    "advice": "Carry more speed into T15 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:2": {
+    "message": "The largest reliable loss is T18 at +0.581s. The benchmark shows a stronger low entry speed profile at T18.",
+    "advice": "Carry more speed into T18 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:3": {
+    "message": "The largest reliable loss is T19 at +0.461s. The benchmark shows a stronger low min speed profile at T19.",
+    "advice": "Protect minimum speed through T19 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:4": {
+    "message": "The largest reliable loss is T9 at +0.561s. The benchmark shows a stronger low min speed profile at T9.",
+    "advice": "Protect minimum speed through T9 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:55:1": {
+    "message": "The largest reliable loss is T2 at +0.681s. SAI has 49 km/h more exit speed at T2.",
+    "advice": "Protect minimum speed through T2 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:5": {
+    "message": "The largest reliable loss is T9 at +1.279s. NOR carries 62 km/h more minimum speed at T9.",
+    "advice": "Protect minimum speed through T9 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:6": {
+    "message": "The largest reliable loss is T5 at +0.281s. The benchmark shows a stronger low min speed profile at T5.",
+    "advice": "Protect minimum speed through T5 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:7": {
+    "message": "Target driver is 0.451 seconds slower than benchmark on lap 7, with a significant time loss of 0.361 seconds at T2 due to LOW_ENTRY_SPEED.",
+    "advice": "Increase entry speed at T2 for the next lap.",
+    "status": "READY"
+  },
+  "9165:1:4:8": {
+    "message": "Target driver is 0.124 seconds behind the benchmark on lap 8, with significant time losses in T9 (0.3s) and T13 (0.24s).",
+    "advice": "Focus on improving minimum speeds through T9 and exit speed through T13.",
+    "status": "READY"
+  },
+  "9165:1:4:9": {
+    "message": "Target driver is losing 0.24 seconds to benchmark driver in T14 due to GOOD conditions.",
+    "advice": "Increase entry speed by 25 km/h at T12 on the next lap.",
+    "status": "READY"
+  },
+  "9165:1:4:10": {
+    "message": "Target driver is 0.434 seconds behind benchmark on lap 10, with significant time loss in T15 (0.44s) and T3 (0.36s).",
+    "advice": "Focus on improving exit speed at T8 and entry/exit speeds at T6 to close the gap.",
+    "status": "READY"
+  },
+  "9165:1:4:11": {
+    "message": "Driver 1 is losing time in T15 and T10 due to low min speed and late throttle, respectively.",
+    "advice": "Focus on improving minimum speed through T15 and throttle application through T10.",
+    "status": "READY"
+  },
+  "9165:1:4:12": {
+    "message": "Driver 1 is losing 0.56s at T18 due to LOW_ENTRY_SPEED, and NOR has a strength in carrying more entry speed at this corner.",
+    "advice": "Increase entry speed by 44km/h at T18 on the next lap.",
+    "status": "READY"
+  },
+  "9165:1:4:13": {
+    "message": "Driver 1 is losing 0.321 seconds to the benchmark, with significant time losses in T15 (0.641s) and T10 (0.1s).",
+    "advice": "Focus on improving exit speeds out of T15 and T10 on the next lap.",
+    "status": "READY"
+  },
+  "9165:1:4:14": {
+    "message": "Driver 1 is losing 0.6 seconds at T2 due to low min speed, and 0.5 seconds at T3 with a good diagnosis.",
+    "advice": "Increase min speed at T2 by carrying more speed through the corner and focus on maintaining exit speed.",
+    "status": "READY"
+  },
+  "9165:1:4:15": {
+    "message": "Driver 1 is losing 0.62s at T13 due to LOW_EXIT_SPEED, and also losing 0.46s at T3 due to LOW_ENTRY_SPEED",
+    "advice": "Increase minimum speed through T17 by 42 km/h",
+    "status": "READY"
+  },
+  "9165:1:4:16": {
+    "message": "Driver 1 is losing 0.44s at T10 due to GOOD conditions, and also experiencing LOW_MIN_SPEED and LOW_EXIT_SPEED at T8 and T13 respectively.",
+    "advice": "Increase minimum speed at T8 by carrying more speed into the corner.",
+    "status": "READY"
+  },
+  "9165:1:4:17": {
+    "message": "Target driver is 0.457s slower than benchmark on lap 17, with significant time loss in T12 (0.46s) and T6 (0.241s).",
+    "advice": "Focus on improving entry speed at T4 and minimum speed at T8.",
+    "status": "READY"
+  },
+  "9165:1:4:18": {
+    "message": "Target driver is losing 0.771s to benchmark driver, with top losses in T8 (0.421s) and T2 (0.34s).",
+    "advice": "Focus on improving braking technique at T8 and increasing minimum speed at T2 for the next lap.",
+    "status": "READY"
+  }
+}
