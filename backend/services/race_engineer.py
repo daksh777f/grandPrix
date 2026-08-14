@@ -8,7 +8,7 @@ def generate_race_engineer_advice(corner_metrics: dict) -> dict:
     Calls the LLM to generate natural race-engineer advice.
     Returns a dictionary mapping corner names to dicts containing 'message' and 'advice'.
     """
-    model = "llama3.1:latest"
+    model = os.getenv("OLLAMA_MODEL", "llama3.1:latest")
 
     url = "http://localhost:11434/api/chat"
     headers = {
@@ -130,3 +130,131 @@ def _fallback_advice(corner_metrics: dict) -> dict:
             "advice": advice
         }
     return results
+
+
+def generate_voice_interpretation(payload: dict) -> dict:
+    """Phrase voice and race evidence without performing audio analysis."""
+    transcript = payload.get("transcript")
+    voice = payload.get("voice", {})
+    context = payload.get("context", {})
+    performance = context.get("performance", {})
+    race_context = context.get("race_context", {})
+    corner = context.get("corner") or "the current section"
+
+    fallback = {
+        "message": f"The transmission is synchronized with {corner} telemetry.",
+        "advice": f"Keep monitoring {corner} and follow the deterministic car diagnosis.",
+        "status": "FALLBACK",
+    }
+    diagnosis = performance.get("diagnosis")
+    if diagnosis == "EARLY_BRAKING":
+        fallback["message"] = f"The transmission is synchronized with an entry deficit at {corner}."
+        fallback["advice"] = f"Release the brake progressively and carry more speed into {corner}."
+    elif diagnosis == "LOW_ENTRY_SPEED":
+        fallback["message"] = f"The transmission is synchronized with low entry speed at {corner}."
+        fallback["advice"] = f"Carry more speed into {corner} while keeping the car balanced."
+    elif diagnosis == "LOW_MIN_SPEED":
+        fallback["message"] = f"The transmission is synchronized with minimum-speed loss at {corner}."
+        fallback["advice"] = f"Prioritize rotation and maintain momentum through {corner}."
+    elif diagnosis == "LATE_THROTTLE":
+        fallback["message"] = f"The transmission is synchronized with late throttle at {corner}."
+        fallback["advice"] = f"Start the throttle phase earlier on the exit of {corner}."
+    elif diagnosis == "LOW_EXIT_SPEED":
+        fallback["message"] = f"The transmission is synchronized with exit-speed loss at {corner}."
+        fallback["advice"] = f"Prioritize a clean exit and earlier acceleration from {corner}."
+
+    if not transcript:
+        return fallback
+
+    system_prompt = """You are an F1 race engineer interpreting already-extracted evidence.
+Hugging Face has already produced the transcript and vocal-state labels. Do not analyze raw audio.
+Use only the supplied transcript, voice fields, telemetry, corner, phase, and race context.
+Do not claim that emotion proves stress, fatigue, or a psychological state. Say voice state or vocal intensity.
+Do not invent values, labels, corners, positions, gaps, diagnoses, or causal relationships.
+If a field is null or missing, do not mention it.
+Return ONLY valid JSON with exactly:
+{"message":"short observation","advice":"short actionable instruction"}
+"""
+    user_payload = {
+        "transcript": transcript,
+        "voice": voice,
+        "corner": corner,
+        "phase": context.get("phase"),
+        "performance": performance,
+        "race_context": race_context,
+    }
+    data = {
+        "model": os.getenv("OLLAMA_MODEL", "llama3.1:latest"),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_payload)},
+        ],
+        "format": "json",
+        "stream": False,
+        "options": {"temperature": 0.2},
+    }
+    url = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            content = result.get("message", {}).get("content", "{}").strip()
+            if content.startswith("```"):
+                content = content.split("```json")[-1].split("```")[0].strip()
+            parsed = json.loads(content)
+            message = parsed.get("message")
+            advice = parsed.get("advice")
+            if not isinstance(message, str) or not isinstance(advice, str) or not message or not advice:
+                return fallback
+            return {"message": message, "advice": advice, "status": "READY"}
+    except Exception as exc:
+        print(f"Voice Ollama interpretation unavailable: {exc}")
+        return fallback
+
+
+def generate_lap_coaching_advice(payload: dict, fallback: dict) -> dict:
+    """Generate one coaching instruction from one completed-lap comparison."""
+    system_prompt = """You are an F1 race engineer coaching one completed lap.
+The deterministic comparison engine supplied all telemetry facts. Use only those facts.
+Do not invent or alter driver numbers, lap times, corner names, diagnoses, deltas, confidence, or benchmark strengths.
+Do not mention data that is null or absent. This is a coaching record, not an automatic radio decision.
+Return ONLY valid JSON with exactly:
+{"message":"one concise evidence-based observation","advice":"one concise next-lap instruction"}
+"""
+    data = {
+        "model": os.getenv("OLLAMA_MODEL", "llama3.1:latest"),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(payload)},
+        ],
+        "format": "json",
+        "stream": False,
+        "options": {"temperature": 0.2},
+    }
+    url = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            content = result.get("message", {}).get("content", "{}").strip()
+            if content.startswith("```"):
+                content = content.split("```json")[-1].split("```")[0].strip()
+            parsed = json.loads(content)
+            message = parsed.get("message")
+            advice = parsed.get("advice")
+            if isinstance(message, str) and isinstance(advice, str) and message and advice:
+                return {"message": message, "advice": advice, "status": "READY"}
+    except Exception as exc:
+        print(f"Lap coaching Ollama interpretation unavailable: {exc}")
+    return fallback
