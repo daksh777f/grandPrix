@@ -43,7 +43,7 @@ export function MissionStrip() {
     <section ref={containerRef} className="py-32 px-6 bg-asphalt flex flex-col items-center justify-center border-t border-chrome/10 relative z-10">
       <div className="max-w-4xl text-center">
         <h2 ref={textRef} className="font-display text-3xl md:text-5xl font-medium text-ink leading-tight">
-          Driver stress goes unheard. <br/>
+          Driver voice signals go unheard. <br/>
           <span className="text-chrome">Engineers miss what matters.</span> <br/>
           <span className="text-brand-red font-bold uppercase tracking-wide text-2xl md:text-4xl mt-6 block">
             Until Now.

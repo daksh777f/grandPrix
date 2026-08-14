@@ -44,13 +44,16 @@ export function Drivers() {
           The Grid
         </h2>
         <p className="font-body text-xl text-ink-muted">
-          20 drivers. 20 distinct stress signatures.
+          20 drivers. 20 distinct race profiles.
         </p>
       </div>
 
       <div className="h-[600px] w-full relative">
         <div className="absolute inset-0 bg-gradient-to-b from-asphalt via-transparent to-asphalt z-10 pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-r from-asphalt via-transparent to-asphalt z-10 pointer-events-none" />
+        {isLoading && (
+          <div className="h-full flex items-center justify-center font-mono text-xs uppercase tracking-widest text-ink-muted">Loading grid data...</div>
+        )}
         {!isLoading && items.length > 0 && (
           <DriftWall
             items={items}
@@ -62,6 +65,9 @@ export function Drivers() {
             grayscale={true}
             dim={0.7}
           />
+        )}
+        {!isLoading && items.length === 0 && (
+          <div className="h-full flex items-center justify-center font-mono text-xs uppercase tracking-widest text-ink-muted">Grid data unavailable</div>
         )}
       </div>
 

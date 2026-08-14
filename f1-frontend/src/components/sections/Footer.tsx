@@ -21,7 +21,7 @@ export function Footer() {
             className="flex items-center gap-2 text-ink-muted hover:text-ink transition-colors font-body text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-2 py-1"
           >
             <GitBranch className="w-4 h-4" />
-            ZERO-PIT Replay Engine
+            ZERO-PIT Intelligence
           </a>
           <a
             href="https://github.com/daksh777f/grandPrix"

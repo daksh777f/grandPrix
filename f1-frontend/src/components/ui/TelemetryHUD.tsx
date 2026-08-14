@@ -41,11 +41,11 @@ export function TelemetryHUD() {
       <div className="flex items-center justify-between border-b border-white/10 pb-3 text-xs tracking-widest text-ink-muted">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-brand-red animate-pulse" />
-          <span className="font-bold text-white uppercase">LIVE TELEMETRY HUD</span>
+          <span className="font-bold text-white uppercase">TELEMETRY PREVIEW</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-          <span className="text-[10px] text-emerald-400 font-bold">100Hz DIRECT LINK</span>
+           <span className="text-[10px] text-emerald-400 font-bold">ARCHIVE SIGNAL</span>
         </div>
       </div>
 

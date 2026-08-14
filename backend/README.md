@@ -19,20 +19,28 @@ The backend reads local telemetry, timing, radio, and derived analysis files fro
 - `services/live_analysis.py` computes live telemetry analysis and replay-style samples.
 - `services/race_context.py` derives race-state context from timing data.
 - `services/race_engineer.py` turns corner metrics into engineer-style recommendations.
-- `services/radio.py` processes team radio metadata and related audio assets.
+- `services/voice.py` downloads and caches radio audio, runs Hugging Face ASR/emotion inference, aligns events with race data, and requests Ollama wording.
+- `services/timeline.py` composes existing live-analysis, voice, race-context, communication, and co-driver transitions without changing their source logic.
+- `services/radio.py` is a compatibility import for the renamed voice service.
 - `services/replay.py` assembles replay payloads for the frontend.
 - `data/` contains helper assets used by backend logic.
 
 ## Requirements
 
-The pinned package list is intentionally small, but the service code references the following libraries:
+The requirements file includes the libraries used by the service code:
 
 - `fastapi`
 - `uvicorn`
 - `pandas`
 - `numpy`
 - `requests`
-- `whisper`
+- `torch`
+- `transformers`
+- `accelerate`
+- `librosa`
+- `soundfile`
+
+The emotion model returns its own labels (`neu`, `hap`, `ang`, `sad`). The service preserves those labels and derives only the conservative `voice_state` indicator.
 
 Install any additional packages required by your runtime if they are not already available in your environment.
 
@@ -54,7 +62,10 @@ The service exposes the following routes:
 - `GET /api/grid`
 - `GET /api/replay/{session_key}/{driver_number}`
 - `GET /api/live-analysis/{session_key}/{driver_number}`
-- `GET /api/radio/{session_key}/{driver_number}`
+- `GET /api/voice/{session_key}/{driver_number}`
+- `GET /api/radio/{session_key}/{driver_number}` (compatibility alias)
+- `GET /audio/{filename}` (cached radio audio)
+- `GET /api/race-timeline/{session_key}/{driver_number}`
 - `POST /api/race-engineer`
 
 ## Data expectations
@@ -66,6 +77,8 @@ The backend expects the repository-level `data/` directory to contain the race a
 - `location_*.csv`
 - `team_radio.csv`
 - `radio_audio/`
+- `radio_transcripts/` (runtime transcript cache)
+- `voice_analysis/` (runtime emotion and interpretation cache)
 - derived cache files such as `analysis.json` and `telemetry.csv`
 
 If you move or rename those files, update the service paths accordingly.

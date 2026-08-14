@@ -11,7 +11,7 @@ gsap.registerPlugin(ScrollTrigger);
 function RadioTranscriptCard() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [text, setText] = useState("");
-  const fullText = "Box this lap, box this lap, confirm.";
+  const fullText = "OPEN VOICE INTELLIGENCE ARCHIVE.";
 
   // Animation logic to simulate audio playback
   useEffect(() => {
@@ -46,15 +46,15 @@ function RadioTranscriptCard() {
             <Mic className="w-5 h-5 text-chrome" />
           </div>
           <div>
-            <div className="font-mono text-xs text-ink-muted uppercase tracking-wider">Driver 1 Radio</div>
-            <div className="font-display font-medium text-ink">LAP 29</div>
+             <div className="font-mono text-xs text-ink-muted uppercase tracking-wider">Voice Intelligence</div>
+             <div className="font-display font-medium text-ink">ARCHIVE PREVIEW</div>
           </div>
         </div>
 
-        {/* Mood Badge */}
+        {/* Signal Badge */}
         <AnimatePresence mode="wait">
           <motion.div
-            key={isPlaying ? "stressed" : "calm"}
+            key={isPlaying ? "active" : "ready"}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
@@ -65,7 +65,7 @@ function RadioTranscriptCard() {
                 : "bg-accent-teal/10 border-accent-teal/50 text-accent-teal"
             )}
           >
-            {isPlaying ? "STRESSED" : "CALM"}
+            {isPlaying ? "SIGNAL ACTIVE" : "SIGNAL READY"}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -93,7 +93,7 @@ function RadioTranscriptCard() {
         })}
       </div>
 
-      {/* Transcript Text */}
+      {/* Archive Link */}
       <div className="h-12">
         {isPlaying ? (
           <p className="font-mono text-lg text-ink">
@@ -101,7 +101,7 @@ function RadioTranscriptCard() {
           </p>
         ) : (
           <p className="font-mono text-lg text-chrome/40 hover:text-chrome/60 transition-colors cursor-pointer" onClick={() => setIsPlaying(true)}>
-            Click waveform to play transmission...
+            Open Voice Intelligence archive...
           </p>
         )}
       </div>
@@ -115,7 +115,7 @@ function MiniChart() {
       <div className="flex justify-between items-center mb-2">
         <h3 className="font-mono text-xs text-ink-muted uppercase tracking-wider flex items-center gap-2">
           <Activity className="w-4 h-4" />
-          Stress vs Lap Time
+          Voice Signal vs Lap Time
         </h3>
       </div>
 
@@ -127,12 +127,12 @@ function MiniChart() {
           <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(201, 205, 211, 0.1)" strokeWidth="0.5" />
           <line x1="0" y1="75" x2="100" y2="75" stroke="rgba(201, 205, 211, 0.1)" strokeWidth="0.5" />
 
-          {/* Area under stress curve */}
+           {/* Area under the signal curve */}
           <polygon
             points="0,100 0,60 20,65 40,30 60,80 80,40 100,50 100,100"
             fill="rgba(217, 142, 74, 0.1)"
           />
-          {/* Stress Line (Amber) */}
+           {/* Signal Line (Amber) */}
           <polyline
             points="0,60 20,65 40,30 60,80 80,40 100,50"
             fill="none"
@@ -156,10 +156,10 @@ function MiniChart() {
 
         {/* Labels */}
         <div className="absolute inset-0 flex justify-between items-end pointer-events-none mt-2">
-          <span className="font-numeric text-xs text-ink-muted">L15</span>
-          <span className="font-numeric text-xs text-ink-muted">L20</span>
-          <span className="font-numeric text-xs text-brand-red">L29 (BOX)</span>
-          <span className="font-numeric text-xs text-ink-muted">L35</span>
+          <span className="font-numeric text-xs text-ink-muted">SESSION</span>
+          <span className="font-numeric text-xs text-ink-muted">SIGNAL</span>
+          <span className="font-numeric text-xs text-brand-red">CONTEXT</span>
+          <span className="font-numeric text-xs text-ink-muted">ARCHIVE</span>
         </div>
       </div>
     </div>
@@ -196,7 +196,7 @@ function SilenceDetector() {
             Incident
           </div>
           <div className="absolute left-[60%] -bottom-8 font-mono text-[10px] text-brand-red uppercase tracking-wider">
-            4m12s Silence
+            Silence window flagged
           </div>
         </div>
       </div>
@@ -265,7 +265,7 @@ export function VoiceFeature() {
             <WarpText text="CO-DRIVER" />
           </h2>
           <p className="font-body text-xl text-ink-muted max-w-2xl">
-            Real-time vocal stress analysis transforms radio chatter into actionable engineering intelligence.
+           Hugging Face voice signals and race telemetry become actionable engineering intelligence in the archive.
           </p>
         </div>
 

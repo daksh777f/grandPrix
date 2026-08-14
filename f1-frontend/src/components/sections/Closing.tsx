@@ -26,7 +26,7 @@ export function Closing() {
           <div className="space-y-6 font-display text-2xl md:text-4xl font-medium leading-tight">
             <p>
               We built this to prove that telemetry isn't just numbers on a screen.
-              It's human emotion, pressure, and breaking points.
+              It's radio, telemetry, pressure, and the moments that matter.
             </p>
             <p className="text-asphalt font-bold">
               No warning sign goes unheard.

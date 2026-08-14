@@ -25,6 +25,7 @@ The repository is intentionally file-backed so the hackathon demo can run offlin
 - Uses a local Ollama model for concise instruction generation, with deterministic fallback advice if the model is unavailable.
 - Provides a radio browser that downloads team radio clips, transcribes them locally, and aligns them with telemetry and race context.
 - Presents the experience through a product-style landing page plus dedicated live and voice routes.
+- Provides a unified Race Timeline that merges meaningful telemetry, radio, race-context, communication, and co-driver transitions.
 
 ## Key Features
 
@@ -34,7 +35,7 @@ The repository is intentionally file-backed so the hackathon demo can run offlin
 | Live Intelligence | Historical telemetry playback with 1x, 2x, 5x, 10x, and 20x speeds, current-corner identification, benchmark comparison, race-context overlay, and communication gating |
 | Corner analysis | Approximate corner windows for the 2023 Singapore track, entry/minimum/exit speed comparison, braking timing, throttle timing, and estimated time loss |
 | Race context | Position, driver-behind lookup, gap-behind lookup, battle detection, and defending-state inference from interval/position history |
-| Radio / Voice | Team radio ingestion, Whisper transcription, telemetry alignment, and radio intelligence rendering |
+| Radio / Voice | Team radio ingestion, Hugging Face transcription/emotion signals, telemetry alignment, and radio intelligence rendering |
 | Local LLM | Ollama chat endpoint with deterministic JSON-based advice generation and fallback summaries |
 
 ## Tech Stack
@@ -61,13 +62,20 @@ The repository is intentionally file-backed so the hackathon demo can run offlin
 
 ### Backend
 
-The checked-in `backend/requirements.txt` currently lists:
+The checked-in `backend/requirements.txt` includes:
 
 - `fastapi`
 - `uvicorn`
 - `pandas`
+- `numpy`
+- `requests`
+- `torch`
+- `transformers`
+- `accelerate`
+- `librosa`
+- `soundfile`
 
-The service modules also import `numpy`, `requests`, and `whisper`, so those packages must be available in the local Python environment when you run the backend.
+The voice service uses Hugging Face Transformers for `openai/whisper-large-v3` and `superb/wav2vec2-base-superb-er`. The models are loaded lazily on the first voice request. Set `HF_TOKEN` only if the selected Hub resources require authentication; do not expose it to the frontend.
 
 ## How It Works
 
@@ -235,7 +243,7 @@ The backend sends deterministic corner metrics plus optional race context to the
 
 If Ollama is unavailable, times out, or returns invalid JSON, the backend falls back to deterministic advice strings generated from the corner diagnosis.
 
-No repository-level environment variable currently configures the Ollama host or model. Those values are hardcoded in the source.
+Ollama host and model can be overridden with `OLLAMA_URL` and `OLLAMA_MODEL`; defaults remain local Ollama values.
 
 ## Radio / Voice
 
@@ -245,10 +253,14 @@ Implemented in the backend:
 
 - `team_radio.csv` is filtered by session and driver.
 - Audio clips are downloaded to `data/radio_audio/` when needed.
-- Whisper is used to transcribe the audio locally.
-- The radio timestamp is aligned to the nearest telemetry sample when the match is within 5 seconds.
-- Track context, telemetry context, and race context are attached to each radio message.
-- The transcript is fed into the same race-engineer reasoning layer to produce a message and advice pair.
+- Hugging Face `openai/whisper-large-v3` transcribes downloaded audio locally.
+- Hugging Face `superb/wav2vec2-base-superb-er` returns the model's actual emotion labels and probabilities.
+- A conservative `voice_state` (`CALM`, `ELEVATED`, or `HIGH_INTENSITY`) is derived from the model's neutral probability; it is not stress or psychological diagnosis.
+- The selected emotion model currently returns `neu`, `hap`, `ang`, and `sad`; the UI displays those labels in uppercase without renaming them.
+- The radio timestamp is aligned to the nearest target telemetry sample when the match is within 5 seconds, with lap-bounded normalized progress.
+- Track context, deterministic performance analysis, communication-gate state, and race context are attached to each radio message.
+- Transcript, emotion, and Ollama interpretation results are cached under `data/radio_transcripts/` and `data/voice_analysis/`.
+- The transcript, voice signals, and structured race evidence are passed to Ollama for race-engineer wording only.
 
 Implemented in the frontend:
 
@@ -259,8 +271,8 @@ Implemented in the frontend:
 Limitations of the current voice implementation:
 
 - It is transcript- and context-driven, not acoustic stress analysis.
-- `voice_state` in the payload is currently hardcoded to `ANALYSIS PENDING`.
-- If audio is missing or Whisper fails, the message degrades gracefully rather than performing a more advanced speech-analysis fallback.
+- If audio download or either Hugging Face model fails, the affected signal is marked unavailable and the page remains usable.
+- The emotion model is a vocal emotion classifier; its output must not be interpreted as direct stress, fatigue, or mental-state detection.
 
 ## Corner History
 
@@ -303,7 +315,9 @@ The FastAPI application lives in `backend/main.py`.
 | `GET` | `/api/grid` | Returns the driver grid used by the frontend driver wall | none | `{ "drivers": [...] }` |
 | `GET` | `/api/replay/{session_key}/{driver_number}` | Returns replay data for a session, driver, and lap | path params `session_key`, `driver_number`; query param `lap` defaults to `2` | Session metadata, lap number, lap duration, and normalized telemetry samples |
 | `GET` | `/api/live-analysis/{session_key}/{driver_number}` | Returns the live-analysis sample stream for the selected target driver | path params `session_key`, `driver_number` | Target driver, benchmark driver, lap number, and an ordered list of analysis samples |
-| `GET` | `/api/radio/{session_key}/{driver_number}` | Returns radio intelligence messages for the selected driver | path params `session_key`, `driver_number` | Driver number plus a list of radio messages with audio, transcription, track context, telemetry context, race context, and AI interpretation |
+| `GET` | `/api/voice/{session_key}/{driver_number}` | Returns cached Hugging Face voice intelligence for the selected driver | path params `session_key`, `driver_number` | Session/driver metadata, model identifiers, and messages with audio, transcript, emotion signals, aligned performance, race context, communication state, and Ollama interpretation |
+| `GET` | `/api/radio/{session_key}/{driver_number}` | Compatibility alias for the voice endpoint | path params `session_key`, `driver_number` | Same response as `/api/voice` |
+| `GET` | `/api/race-timeline/{session_key}/{driver_number}` | Merges existing live, voice, race-context, gate, and co-driver transitions | path params `session_key`, `driver_number` | Chronologically ordered shared event context with links back to `/live` and `/voice` |
 | `POST` | `/api/race-engineer` | Generates race-engineer advice from corner metrics | JSON body: `{ "corner_metrics": { ... } }` | Corner-keyed message/advice output from the Ollama reasoning layer or fallback logic |
 
 There is no `/api/corner-history` route in the current codebase.
@@ -315,7 +329,7 @@ grandPrix/
 ├─ backend/
 │  ├─ main.py                 # FastAPI app and route definitions
 │  ├─ data/                   # Track configuration and data-prep helpers
-│  └─ services/               # Drivers, replay, live analysis, race context, radio, race engineer
+│  └─ services/               # Drivers, replay, live analysis, race context, voice, timeline, race engineer
 ├─ data/                      # Historical timing, telemetry, radio, and derived session assets
 ├─ f1-frontend/
 │  ├─ src/App.tsx             # Router shell and loader gate
@@ -353,7 +367,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-If your environment does not already provide the runtime imports used by the service modules, also install the missing packages referenced in code: `numpy`, `requests`, and the package that provides the `whisper` module.
+The requirements install also downloads the Hugging Face model dependencies. The first `/voice` request downloads model weights from the Hub unless they are already present in the local Transformers cache.
 
 ### Frontend installation
 
@@ -413,15 +427,19 @@ npm run build
 - `/` landing page.
 - `/live` LIVE INTELLIGENCE.
 - `/voice` RADIO NOW / Voice page.
+- `/timeline` unified chronological race-event timeline.
 
 ## Environment Variables
 
-No repository-specific environment variables are currently read by the codebase.
+The voice service reads the following optional environment variables:
 
 Observed hardcoded runtime values include:
 
 - Ollama endpoint: `http://localhost:11434/api/chat`
 - Ollama model: `llama3.1:latest`
+- `HF_TOKEN`: optional Hugging Face Hub token for model access
+- `OLLAMA_URL`: optional Ollama chat endpoint override
+- `OLLAMA_MODEL`: optional Ollama model override
 - Frontend demo session: `9165`
 - Frontend demo target driver: `1`
 
@@ -432,7 +450,7 @@ Observed hardcoded runtime values include:
 - The target session and driver are hardcoded in the current frontend demo pages.
 - Race-context confidence depends on the freshness of interval samples and the configured age limit.
 - Ollama must be available locally for generated radio advice; otherwise the backend falls back to deterministic text.
-- The voice experience is transcript and context driven, not acoustic stress analysis.
+- The voice experience exposes Hugging Face transcript and vocal-emotion signals; it is not acoustic stress analysis or psychological diagnosis.
 - There is no standalone corner-history route or clickable corner-history browser yet.
 - `race_control.csv` is present in the repo but is not wired into the active backend services.
 

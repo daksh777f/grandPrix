@@ -54,9 +54,9 @@ export function Hero() {
           transition={{ duration: 0.8 }}
           className="flex items-center gap-3 px-4 py-2 rounded-full bg-black/60 border border-white/10 backdrop-blur-xl"
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-brand-red animate-ping" />
+          <span className="w-2.5 h-2.5 rounded-full bg-brand-red" />
           <span className="text-xs font-mono font-bold tracking-widest text-white uppercase">
-            MONACO GRAND PRIX 2026 // LIVE
+            SINGAPORE GP 2023 // ARCHIVE
           </span>
         </motion.div>
 
@@ -122,7 +122,7 @@ export function Hero() {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="text-base md:text-xl font-body text-ink-muted max-w-xl mb-8 leading-relaxed font-medium"
           >
-            Step into the cockpit of Formula 1. Real-time 3D telemetry, synthesized engine acoustics, and AI voice driver feedback engineered for the next era.
+            Step into a historical Formula 1 cockpit. Telemetry, team radio, and AI race-engineer context brought together for the next decision.
           </motion.p>
 
           {/* Action Pills */}
@@ -133,22 +133,22 @@ export function Hero() {
             className="flex flex-wrap items-center gap-4"
           >
             <a
-              href="#voice"
+              href="/live"
               className="px-8 py-4 rounded-full bg-brand-red text-white font-body font-bold text-sm uppercase tracking-wider hover:scale-105 transition-transform shadow-[0_0_25px_#e10600]"
             >
-              The Silent Co-Driver
+              Live Intelligence
             </a>
             <a
-              href="/live"
+              href="/voice"
               className="px-8 py-4 rounded-full bg-white/10 border border-white/20 text-white font-body font-bold text-sm uppercase tracking-wider hover:bg-white/20 transition-colors backdrop-blur-md"
             >
-              Live Intelligence →
+              Voice Intelligence
             </a>
             <a
-              href="#replay"
+              href="/timeline"
               className="px-8 py-4 rounded-full bg-white/10 border border-white/20 text-white font-body font-bold text-sm uppercase tracking-wider hover:bg-white/20 transition-colors backdrop-blur-md"
             >
-              Race Replay
+              Race Timeline
             </a>
           </motion.div>
         </div>

@@ -1,0 +1,4 @@
+data/radio_transcripts/
+data/voice_analysis/
+data/radio_audio/*.part
+*.tmp
