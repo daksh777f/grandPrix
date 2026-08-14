@@ -65,45 +65,6 @@ export const DRIVERS = [
   }
 ];
 
-export const STRESS_EVENTS = [
-  {
-    eventId: "evt_0001",
-    event_type: "stress_alert",
-    event_meta: {
-      driver_number: 1,
-      lap_number: 29,
-      elapsed_race_time: 2847.6,
-      transcript: "Box this lap, box this lap, confirm.",
-      mood_label: "Stressed",
-      arousal_score: 0.78,
-      message: "Elevated stress detected during pit call"
-    }
-  },
-  {
-    eventId: "evt_0002",
-    event_type: "silence_flag",
-    event_meta: {
-      driver_number: 11,
-      lap_number: 34,
-      elapsed_race_time: 3390.1,
-      message: "No radio contact for 4m12s during position loss"
-    }
-  },
-  {
-    eventId: "evt_0003",
-    event_type: "stress_alert",
-    event_meta: {
-      driver_number: 1,
-      lap_number: 15,
-      elapsed_race_time: 1200.5,
-      transcript: "I'm struggling with the rears, mates.",
-      mood_label: "Calm",
-      arousal_score: 0.35,
-      message: "Routine tire degradation update"
-    }
-  }
-];
-
 export const LOCATION_SAMPLES = [
   { date: "2024-09-22T12:47:51.842Z", driver_number: 1, x: -6689, y: -1445, z: 199 },
   { date: "2024-09-22T12:47:52.842Z", driver_number: 1, x: -6750, y: -1500, z: 200 },

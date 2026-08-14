@@ -18,10 +18,9 @@ export function Navbar() {
   }, []);
 
   const navLinks = [
-    { name: 'Voice', href: '/#voice' },
-    { name: 'Live', href: '/live' },
-    { name: 'Replay', href: '/#replay' },
-    { name: 'Drivers', href: '/#drivers' },
+    { name: 'LIVE INTELLIGENCE', href: '/live' },
+    { name: 'VOICE INTELLIGENCE', href: '/voice' },
+    { name: 'RACE TIMELINE', href: '/timeline' }
   ];
 
   const handleNavClick = (href: string) => {
@@ -66,17 +65,15 @@ export function Navbar() {
                 key={link.name}
                 to={link.href}
                 onClick={() => handleNavClick(link.href)}
-                className="text-sm font-body font-medium text-ink-muted hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-2 py-1"
+                aria-current={location.pathname === link.href ? 'page' : undefined}
+                className={cn(
+                  'text-sm font-body font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-2 py-1',
+                  location.pathname === link.href ? 'text-ink' : 'text-ink-muted hover:text-ink',
+                )}
               >
                 {link.name}
               </Link>
             ))}
-            <Link
-              to="/live"
-              className="px-5 py-2 rounded-full bg-brand-red text-white font-body font-bold text-xs uppercase tracking-wider hover:bg-brand-red/90 transition-all shadow-[0_0_15px_rgba(225,6,0,0.3)]"
-            >
-              Live Intelligence →
-            </Link>
           </div>
 
           {/* Mobile Hamburger Toggle */}
@@ -105,18 +102,15 @@ export function Navbar() {
                 key={link.name}
                 to={link.href}
                 onClick={() => handleNavClick(link.href)}
-                className="font-display text-4xl font-semibold uppercase text-ink tracking-wider hover:text-brand-red transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-4 py-2"
+                aria-current={location.pathname === link.href ? 'page' : undefined}
+                className={cn(
+                  'font-display text-3xl md:text-4xl font-semibold uppercase tracking-wider text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm px-4 py-2',
+                  location.pathname === link.href ? 'text-brand-red' : 'text-ink hover:text-brand-red',
+                )}
               >
                 {link.name}
               </Link>
             ))}
-            <Link
-              to="/live"
-              onClick={() => setMobileMenuOpen(false)}
-              className="mt-4 px-8 py-4 rounded-full bg-brand-red text-white font-display font-bold text-xl uppercase tracking-wider"
-            >
-              Live Intelligence →
-            </Link>
           </motion.div>
         )}
       </AnimatePresence>

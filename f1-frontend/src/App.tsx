@@ -5,6 +5,7 @@ import { Navbar } from '@/components/ui/Navbar';
 import { Home } from '@/pages/Home';
 import { LiveIntelligencePage } from '@/pages/LiveIntelligencePage';
 import { VoicePage } from '@/pages/VoicePage';
+import { RaceTimelinePage } from '@/pages/RaceTimelinePage';
 
 function Layout() {
   return (
@@ -31,6 +32,7 @@ function App() {
               <Route index element={<Home />} />
               <Route path="live" element={<LiveIntelligencePage />} />
               <Route path="voice" element={<VoicePage />} />
+              <Route path="timeline" element={<RaceTimelinePage />} />
             </Route>
           </Routes>
         </BrowserRouter>
