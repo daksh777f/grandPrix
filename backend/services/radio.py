@@ -170,7 +170,7 @@ def get_radio_intelligence(session_key: int, driver_number: int):
                 # Get basic race context
                 if current_lap:
                     # target_time is the date of the telemetry row
-                    r_ctx_list = get_race_context(session_key, [target_time], driver_number)
+                    r_ctx_list = get_race_context(session_key, driver_number, [target_time])
                     if r_ctx_list and len(r_ctx_list) > 0 and r_ctx_list[0] is not None:
                         r_ctx = r_ctx_list[0]
                         race_context = {
@@ -190,12 +190,12 @@ def get_radio_intelligence(session_key: int, driver_number: int):
                     "driver": driver_number,
                     "lap": track_context.get('lap', 'UNKNOWN'),
                     "diagnosis": track_context.get('phase', 'UNKNOWN'),
-                    "speed_delta": 0,
-                    "time_delta": 0,
-                    "is_defending": race_context.get("is_defending", False),
-                    "is_attacking": False,
-                    "battle_gap": race_context.get("gap_behind", 0) if race_context.get("is_defending") else race_context.get("gap_ahead", 0),
-                    "position": race_context.get("position", "UNKNOWN"),
+                    "entry_speed_delta": 0,
+                    "minimum_speed_delta": 0,
+                    "exit_speed_delta": 0,
+                    "braking_delta": 0,
+                    "time_loss": 0,
+                    "race_context": race_context,
                     "radio_transcript": cached_data.get('transcript')
                 }
             }
