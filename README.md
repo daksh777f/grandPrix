@@ -1,134 +1,459 @@
-# Grand Prix Racing Intelligence Platform
+# The Silent Co-Driver
 
-Grand Prix is a motorsport analytics and storytelling workspace built around two layers: a Python backend that serves race intelligence from timing, telemetry, and radio assets, and a React frontend that presents that information through replay, live analysis, and voice-driven views.
+The Silent Co-Driver is an F1 hackathon project that turns historical OpenF1-style data from the 2023 Singapore Grand Prix into a simulated race-engineer experience. The system does not connect to live timing feeds in the current codebase. Instead, it replays local CSV, JSON, and audio assets to approximate a real-time co-driver session.
 
-The repository is structured to support fast local development, reproducible data processing, and presentation-ready race analysis without depending on a database or external application server.
+The product is split into a Python backend and a React frontend. The backend performs telemetry alignment, corner analysis, race-context derivation, radio transcription, and local LLM prompting. The frontend presents the output as a premium F1 engineering interface with a home page, a dedicated Live Intelligence page, and a radio-focused Voice page.
 
-## What the project does
+## Overview
 
-- Serves race intelligence from static CSV, JSON, and audio assets under `data/`.
-- Exposes FastAPI endpoints for grid data, replay playback, live analysis, radio intelligence, and race-engineer guidance.
-- Presents the data through a Vite + React frontend with dedicated pages for the home experience, live intelligence, and voice features.
-- Keeps the data model file-based so the project can be run locally with minimal setup.
+The implementation is designed around evidence-first decision support:
 
-## Repository layout
+1. Historical race data is loaded from local files.
+2. Target-driver telemetry is aligned against a benchmark driver.
+3. Corner-level deltas, race context, and confidence gating are computed deterministically.
+4. Ollama is used only as the wording/reasoning layer for concise engineer instructions.
+5. The frontend renders the result as LIVE ANALYSIS, RACE CONTEXT, and RADIO NOW experiences.
 
-```text
-grandPrix/
-├─ backend/              # FastAPI application and analysis services
-├─ data/                 # Race timing, telemetry, audio, and derived assets
-├─ f1-frontend/          # Vite + React application
-├─ F1_Frontend_PRD.md    # Product direction and feature context
-└─ ZERO-PIT/             # Separate nested repository present in the workspace
-```
+The repository is intentionally file-backed so the hackathon demo can run offline once the local assets and dependencies are in place.
 
-## Architecture overview
+## What It Does
 
-The system is split into two main components:
+- Simulates a live race-engineer workflow from historical 2023 Singapore Grand Prix data.
+- Compares a target driver against a benchmark driver on a corner-by-corner basis.
+- Computes normalized track progress, current corner, corner phase, and performance deltas.
+- Applies a communication gate so the system can remain in MONITORING mode until the issue is material enough to justify ATTENTION or RADIO NOW.
+- Uses a local Ollama model for concise instruction generation, with deterministic fallback advice if the model is unavailable.
+- Provides a radio browser that downloads team radio clips, transcribes them locally, and aligns them with telemetry and race context.
+- Presents the experience through a product-style landing page plus dedicated live and voice routes.
 
-1. The backend loads race data from the local filesystem and transforms it into API responses.
-2. The frontend consumes those responses and renders the experience as a polished race dashboard.
+## Key Features
+
+| Area | Implemented behavior |
+|---|---|
+| Landing page | Presentation-first hero, mission strip, voice teaser, race replay teaser, drivers wall, montage, closing section, and footer |
+| Live Intelligence | Historical telemetry playback with 1x, 2x, 5x, 10x, and 20x speeds, current-corner identification, benchmark comparison, race-context overlay, and communication gating |
+| Corner analysis | Approximate corner windows for the 2023 Singapore track, entry/minimum/exit speed comparison, braking timing, throttle timing, and estimated time loss |
+| Race context | Position, driver-behind lookup, gap-behind lookup, battle detection, and defending-state inference from interval/position history |
+| Radio / Voice | Team radio ingestion, Whisper transcription, telemetry alignment, and radio intelligence rendering |
+| Local LLM | Ollama chat endpoint with deterministic JSON-based advice generation and fallback summaries |
+
+## Tech Stack
+
+### Frontend
+
+| Package | Version |
+|---|---:|
+| React | 19.2.8 |
+| React DOM | 19.2.8 |
+| React Router DOM | 7.18.2 |
+| Vite | 8.2.0 |
+| TypeScript | ~6.0.2 |
+| @vitejs/plugin-react | 6.0.4 |
+| Tailwind CSS | 4.3.3 |
+| @tailwindcss/vite | 4.3.3 |
+| GSAP | 3.15.0 |
+| Motion | 13.1.0 |
+| lucide-react | 1.31.0 |
+| three | 0.185.1 |
+| ogl | 1.0.11 |
+| clsx | 2.1.1 |
+| tailwind-merge | 3.6.0 |
+
+### Backend
+
+The checked-in `backend/requirements.txt` currently lists:
+
+- `fastapi`
+- `uvicorn`
+- `pandas`
+
+The service modules also import `numpy`, `requests`, and `whisper`, so those packages must be available in the local Python environment when you run the backend.
+
+## How It Works
+
+The execution path is:
+
+1. Historical timing, location, car telemetry, and radio assets are read from `data/`.
+2. `backend/services/live_analysis.py` loads the target and benchmark laps, normalizes progress, and synchronizes samples by lap progress.
+3. `backend/data/singapore_2023_track.py` provides approximate corner windows for the Singapore track.
+4. Corner metrics are derived from entry speed, minimum speed, exit speed, braking timing, and throttle timing.
+5. `backend/services/race_context.py` enriches each sample with position, gap, and battle context.
+6. The communication gate decides whether the current issue stays in MONITORING, moves to ATTENTION, or escalates to RADIO NOW.
+7. If escalation is justified, `backend/services/race_engineer.py` calls Ollama and turns the deterministic metrics into concise instruction text.
+8. The React frontend consumes the API and renders the current state as a live engineering cockpit.
 
 ```mermaid
 flowchart LR
-  A[CSV / JSON / audio assets] --> B[FastAPI backend]
-  B --> C[Race replay data]
-  B --> D[Live analysis data]
-  B --> E[Radio intelligence]
-  B --> F[Race engineer advice]
-  C --> G[React frontend]
-  D --> G
-  E --> G
+  A[Historical OpenF1-style data\n2023 Singapore GP / session 9165] --> B[Local CSV / JSON / audio assets]
+  B --> C[FastAPI backend]
+  C --> D[Telemetry alignment]
+  C --> E[Corner analysis]
+  C --> F[Race context]
+  E --> G[Communication gate\nMONITORING / ATTENTION / RADIO NOW]
   F --> G
+  G --> H[Ollama local model]
+  H --> I[Deterministic message + advice]
+  I --> J[React frontend]
+  D --> J
+  E --> J
+  F --> J
 ```
 
-## Key features
+## Live Intelligence
 
-- Home experience with hero content, mission framing, race replay, driver insights, and closing sections.
-- Live intelligence page for driver-centric analysis of session data.
-- Voice page for radio-oriented storytelling and transcription-driven interactions.
-- Backend services for replay assembly, live analysis, race context, and radio intelligence.
-- Static track and telemetry assets stored alongside the code for deterministic local execution.
+The Live Intelligence page is the core product surface and is mounted at `/live`.
 
-## Prerequisites
+It is currently wired in code to session `9165` and driver `1`, which matches the Singapore 2023 demo dataset. The page progressively simulates a live race by advancing through the historical samples at the selected playback speed.
 
-- Python 3.11 or newer.
+Implemented behavior:
+
+- Playback speeds: `1x`, `2x`, `5x`, `10x`, and `20x`.
+- Current section detection from normalized lap progress.
+- Track-map rendering of the target driver and other drivers.
+- Comparison of the target driver against the selected benchmark driver.
+- Contextual telemetry cards for entry speed, minimum speed, exit speed, braking delta, and throttle delay when the current diagnosis is actionable.
+- Race context display for position and battle state.
+- A co-driver briefing panel that moves between MONITORING, ATTENTION, and RADIO NOW.
+
+Important implementation detail: the frontend does not request live OpenF1 data. It calls the local backend and replays the historical session data as if it were arriving in real time.
+
+## Corner Analysis
+
+Corner analysis is implemented in `backend/services/live_analysis.py` using the Singapore-specific corner table in `backend/data/singapore_2023_track.py`.
+
+### Normalized progress
+
+Each lap is converted to a progress value in the range `0.0` to `1.0` by computing cumulative Euclidean distance along the sampled telemetry points. The frontend then renders positions on a `0-100` scale.
+
+### Target vs benchmark synchronization
+
+The target lap and benchmark lap are synchronized by `progress_float` using `pandas.merge_asof(...)`, which aligns the nearest benchmark point to each target sample.
+
+The benchmark driver is selected from the same session and lap by choosing the fastest valid lap from another driver. The target driver is explicitly excluded from being its own benchmark. If no valid comparable lap is available, the code falls back to a fixed driver choice.
+
+### Corner windows and phases
+
+The Singapore track configuration uses approximate progress windows for corners `T1` through `T19`. These are calibrated ranges, not official FIA geometry.
+
+For each sample, the code derives one of the following phases:
+
+- `APPROACH`
+- `BRAKING`
+- `CORNER`
+- `EXIT`
+
+### Metrics used
+
+For each corner window the backend computes:
+
+- entry speed delta
+- minimum speed delta
+- exit speed delta
+- braking progress delta
+- throttle delay
+- estimated time loss over the corner window
+
+### Deterministic diagnoses
+
+The current implementation assigns diagnoses using fixed rules:
+
+| Diagnosis | Rule in code |
+|---|---|
+| `EARLY_BRAKING` | braking progress is earlier than benchmark by more than `0.005` and entry speed is more than `5 km/h` slower |
+| `LOW_ENTRY_SPEED` | entry speed is more than `10 km/h` slower |
+| `LOW_MIN_SPEED` | minimum speed is more than `7 km/h` slower |
+| `LATE_THROTTLE` | throttle application is later than benchmark by more than `0.005` progress units |
+| `LOW_EXIT_SPEED` | exit speed is more than `8 km/h` slower |
+
+If none of those rules match, the corner is treated as `GOOD`.
+
+### Confidence and time-loss handling
+
+The analysis currently assigns a fixed confidence value of `0.85` to actionable corner metrics and uses `0.99` for the fallback "keep pushing" state. Time loss is estimated from elapsed-time differences across the corner window, then passed through the communication gate.
+
+## Race Context
+
+`backend/services/race_context.py` uses `position.csv` and `intervals.csv` to add race-state metadata to each sample.
+
+Implemented behavior:
+
+- Current position is derived from the latest position sample at or before the telemetry timestamp.
+- The driver behind is the car in the next position at that timestamp.
+- `gap_behind` is taken from the most recent valid interval sample for that car.
+- `battle_active` becomes true when the last two valid intervals for the driver behind are both below the configured battle threshold.
+- `is_defending` is set when a battle is active and the driver is ahead of the tracked rival.
+- `position_event` is set to `POSITION_GAIN`, `MULTI_POSITION_GAIN`, `POSITION_LOSS`, or `MULTI_POSITION_LOSS` when a recent position change is detected.
+- Interval data older than the configured age limit is ignored so stale gaps do not keep the system in an outdated state.
+
+Configured thresholds in the current code:
+
+- battle gap threshold: `0.25`
+- minimum valid observations: `2`
+- maximum interval age: `15.0` seconds
+
+The code does not currently infer a separate "attacking" state with the same confidence as defending; it is primarily a defending/battle-active model.
+
+## Communication Gate
+
+The communication gate exists so the system can analyze continuously without interrupting the driver on every sample.
+
+The states are:
+
+- `MONITORING` when the sample is clean, on a straight, or otherwise not actionable.
+- `ATTENTION` when the sample is non-trivial but not yet ready for radio.
+- `RADIO_NOW` when the issue is material enough to justify a spoken instruction.
+
+The current gate uses these thresholds:
+
+- minimum radio confidence: `0.80`
+- minimum radio time loss: `0.10`
+- high-severity immediate escalation: `0.20`
+- minimum persistence: `2` consecutive laps for the same corner+diagnosis key
+- radio cooldown: `20` seconds
+- material worsening delta: `0.10`
+
+How the gate behaves:
+
+- Issues are deduplicated by corner name plus diagnosis.
+- A repeated issue can remain in `RADIO_NOW` if it is still the active radio event.
+- A new radio message can be triggered immediately when the issue materially worsens, even if the cooldown has not expired.
+- Otherwise the gate waits for cooldown expiry.
+- Deterministic fallback advice is still attached if Ollama is unavailable.
+
+## Local LLM / Ollama
+
+`backend/services/race_engineer.py` is the reasoning layer for the co-driver instruction.
+
+Current implementation details:
+
+- Ollama endpoint: `http://localhost:11434/api/chat`
+- Model: `llama3.1:latest`
+- Temperature: `0.2`
+- Output format: JSON-only response with a `corners` array
+
+The backend sends deterministic corner metrics plus optional race context to the model. The model is asked to produce short observation and advice text only. It does not compute telemetry values, diagnoses, or time loss itself.
+
+If Ollama is unavailable, times out, or returns invalid JSON, the backend falls back to deterministic advice strings generated from the corner diagnosis.
+
+No repository-level environment variable currently configures the Ollama host or model. Those values are hardcoded in the source.
+
+## Radio / Voice
+
+The repository contains a real radio intelligence flow at `/voice`, but it is important to distinguish it from the decorative landing-page teaser.
+
+Implemented in the backend:
+
+- `team_radio.csv` is filtered by session and driver.
+- Audio clips are downloaded to `data/radio_audio/` when needed.
+- Whisper is used to transcribe the audio locally.
+- The radio timestamp is aligned to the nearest telemetry sample when the match is within 5 seconds.
+- Track context, telemetry context, and race context are attached to each radio message.
+- The transcript is fed into the same race-engineer reasoning layer to produce a message and advice pair.
+
+Implemented in the frontend:
+
+- The Voice page lists transmissions, transcript status, track context, performance context, and race context.
+- An audio player allows playback of the associated clip.
+- The landing-page `VoiceFeature` section is a stylized presentation component and is not the same thing as the radio browser page.
+
+Limitations of the current voice implementation:
+
+- It is transcript- and context-driven, not acoustic stress analysis.
+- `voice_state` in the payload is currently hardcoded to `ANALYSIS PENDING`.
+- If audio is missing or Whisper fails, the message degrades gracefully rather than performing a more advanced speech-analysis fallback.
+
+## Corner History
+
+There is not currently a standalone corner-history route or dedicated corner-history browser in the active app.
+
+What does exist is the historical corner-analysis logic inside `live_analysis.py`, which already compares the target lap against the benchmark lap on a corner-by-corner basis. The Live Intelligence page exposes those computed metrics while the historical session is replayed, but users cannot yet click into a separate corner-history endpoint or compare arbitrary lap histories from a dedicated screen.
+
+In other words:
+
+- implemented: historical corner comparison inside LIVE ANALYSIS
+- not implemented: a separate clickable corner-history API or route
+
+## Data Sources
+
+The top-level `data/` directory is the source of truth for the current application.
+
+| File or folder | Used for |
+|---|---|
+| `drivers.csv` | Driver grid metadata for the home page and driver cards |
+| `laps.csv` | Lap metadata, lap numbers, start timestamps, and lap durations |
+| `car_data_{driver}.csv` | Per-driver car telemetry such as speed, throttle, brake, gear, rpm, and DRS |
+| `location_{driver}.csv` | Per-driver XY track position used for replay and progress normalization |
+| `intervals.csv` | Gap data for race-context and battle detection |
+| `position.csv` | Position history for race-context state and position changes |
+| `team_radio.csv` | Radio metadata and recording URLs |
+| `data/radio_audio/` | Downloaded or committed MP3 radio clips |
+| `analysis/analysis.json` | Derived analysis artifact used by the existing data pipeline |
+| `analysis/telemetry.csv` | Derived telemetry export used by the existing data pipeline |
+| `cache_9165_1.json` | Derived cache for the 2023 Singapore demo session |
+| `race_control.csv` | Present in the repository, but not currently consumed by the active backend services |
+
+The repository also contains helper caches such as `backend/services/llm_cache.json` and runtime radio cache files created during execution.
+
+## API
+
+The FastAPI application lives in `backend/main.py`.
+
+| Method | Path | Purpose | Parameters | Response |
+|---|---|---|---|---|
+| `GET` | `/api/grid` | Returns the driver grid used by the frontend driver wall | none | `{ "drivers": [...] }` |
+| `GET` | `/api/replay/{session_key}/{driver_number}` | Returns replay data for a session, driver, and lap | path params `session_key`, `driver_number`; query param `lap` defaults to `2` | Session metadata, lap number, lap duration, and normalized telemetry samples |
+| `GET` | `/api/live-analysis/{session_key}/{driver_number}` | Returns the live-analysis sample stream for the selected target driver | path params `session_key`, `driver_number` | Target driver, benchmark driver, lap number, and an ordered list of analysis samples |
+| `GET` | `/api/radio/{session_key}/{driver_number}` | Returns radio intelligence messages for the selected driver | path params `session_key`, `driver_number` | Driver number plus a list of radio messages with audio, transcription, track context, telemetry context, race context, and AI interpretation |
+| `POST` | `/api/race-engineer` | Generates race-engineer advice from corner metrics | JSON body: `{ "corner_metrics": { ... } }` | Corner-keyed message/advice output from the Ollama reasoning layer or fallback logic |
+
+There is no `/api/corner-history` route in the current codebase.
+
+## Project Structure
+
+```text
+grandPrix/
+├─ backend/
+│  ├─ main.py                 # FastAPI app and route definitions
+│  ├─ data/                   # Track configuration and data-prep helpers
+│  └─ services/               # Drivers, replay, live analysis, race context, radio, race engineer
+├─ data/                      # Historical timing, telemetry, radio, and derived session assets
+├─ f1-frontend/
+│  ├─ src/App.tsx             # Router shell and loader gate
+│  ├─ src/pages/              # Home, Live Intelligence, and Voice pages
+│  ├─ src/components/         # Shared UI primitives and home-page sections
+│  ├─ src/lib/api.ts          # Typed fetch helpers for backend endpoints
+│  └─ vite.config.ts          # Vite config and local /api proxy
+├─ F1_Frontend_PRD.md         # Product brief and feature direction
+└─ ZERO-PIT/                  # Separate nested repository present in the workspace, not part of this app
+```
+
+The most important frontend sections are:
+
+- `Hero`, `MissionStrip`, `VoiceFeature`, `RaceReplay`, `Drivers`, `Montage`, `Closing`, and `Footer` on the home page.
+- `LiveIntelligencePage` for live analysis playback.
+- `VoicePage` for radio/transcript exploration.
+- `Navbar`, `Loader`, `DriftWall`, `TelemetryHUD`, and `WarpText` as shared UI elements.
+
+## Setup
+
+### Prerequisites
+
 - Node.js 20 or newer.
 - npm.
+- A recent Python 3 interpreter.
+- Ollama installed locally if you want the LLM-backed instruction layer.
 
-The backend depends on `fastapi`, `uvicorn`, and `pandas`. The service modules also reference `numpy`, `requests`, and `whisper`, so ensure the local Python environment includes the packages required by your chosen run path.
+### Backend installation
 
-## Backend setup
+From `backend/`:
 
-From the `backend/` directory:
-
-```bash
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn main:app --reload
 ```
 
-The API will listen on the default Uvicorn host and port unless overridden.
+If your environment does not already provide the runtime imports used by the service modules, also install the missing packages referenced in code: `numpy`, `requests`, and the package that provides the `whisper` module.
 
-## Frontend setup
+### Frontend installation
 
-From the `f1-frontend/` directory:
+From `f1-frontend/`:
 
 ```bash
 npm install
+```
+
+### Ollama setup
+
+The backend expects Ollama to be reachable at `http://localhost:11434` and uses the `llama3.1:latest` model name.
+
+Typical local setup:
+
+```bash
+ollama pull llama3.1:latest
+ollama serve
+```
+
+If Ollama is not running or the model is unavailable, the backend will still return deterministic fallback advice.
+
+### Required data placement
+
+The repository already includes the historical session assets under `data/`. Do not move those files unless you also update the file paths in the backend services.
+
+## Running the Project
+
+### Start the backend
+
+From `backend/`:
+
+```powershell
+uvicorn main:app --reload --port 8000
+```
+
+### Start the frontend
+
+From `f1-frontend/`:
+
+```bash
 npm run dev
 ```
 
-To validate the frontend build:
+The Vite development server proxies `/api` requests to `http://localhost:8000`.
+
+### Validate the frontend build
+
+From `f1-frontend/`:
 
 ```bash
 npm run build
 ```
 
-## API endpoints
+### Open the main routes
 
-The backend exposes the following routes from `backend/main.py`:
+- `/` landing page.
+- `/live` LIVE INTELLIGENCE.
+- `/voice` RADIO NOW / Voice page.
 
-- `GET /api/grid` returns driver grid data.
-- `GET /api/replay/{session_key}/{driver_number}` returns replay data for a session and driver.
-- `GET /api/live-analysis/{session_key}/{driver_number}` returns live analysis output.
-- `GET /api/radio/{session_key}/{driver_number}` returns radio intelligence.
-- `POST /api/race-engineer` accepts corner metrics and returns race-engineer advice.
+## Environment Variables
 
-## Frontend routes
+No repository-specific environment variables are currently read by the codebase.
 
-The frontend routes are defined in `f1-frontend/src/App.tsx`:
+Observed hardcoded runtime values include:
 
-- `/` home experience.
-- `/live` live intelligence view.
-- `/voice` voice intelligence view.
+- Ollama endpoint: `http://localhost:11434/api/chat`
+- Ollama model: `llama3.1:latest`
+- Frontend demo session: `9165`
+- Frontend demo target driver: `1`
 
-## Data files
+## Limitations
 
-The `data/` directory contains the static inputs and derived artifacts used by the backend. These include:
+- The project uses historical data to simulate real-time behavior; it does not connect to live OpenF1 streams in the current code.
+- Corner geometry is an approximate progress-based calibration, not an official track survey.
+- The target session and driver are hardcoded in the current frontend demo pages.
+- Race-context confidence depends on the freshness of interval samples and the configured age limit.
+- Ollama must be available locally for generated radio advice; otherwise the backend falls back to deterministic text.
+- The voice experience is transcript and context driven, not acoustic stress analysis.
+- There is no standalone corner-history route or clickable corner-history browser yet.
+- `race_control.csv` is present in the repo but is not wired into the active backend services.
 
-- Lap, interval, position, stint, and race-control datasets.
-- Per-driver telemetry traces and location samples.
-- Race radio metadata and audio assets.
-- Derived analysis JSON used by the replay and live-analysis services.
+## Future Work
 
-Treat these files as source assets for the application. If you regenerate them, keep the structure stable so the backend and frontend continue to resolve the same paths.
+- Add configurable session and driver selection in the frontend.
+- Expose a dedicated corner-history route for arbitrary lap-by-lap comparisons.
+- Broaden race-context reasoning beyond the current position/gap/battle model.
+- Improve benchmark selection when the fastest valid comparable lap is not the most meaningful rival.
+- Add richer voice analysis if acoustic features become part of the product scope.
+- Integrate a true live OpenF1 source when the hackathon constraints are removed.
 
-## Development notes
+## Hackathon Demo Flow
 
-- The project is file-backed rather than database-backed.
-- The frontend and backend can be run independently during development.
-- Large telemetry and audio assets are committed directly to the repository so the application can be reproduced offline.
-- The workspace also contains a separate nested repository at `ZERO-PIT/`; it is not part of the `grandPrix` application itself.
-
-## Suggested workflow
-
-1. Start the backend service.
-2. Start the frontend development server.
-3. Open the frontend in a browser and use the live and voice routes to verify the integrated experience.
-4. Rebuild the frontend and rerun the backend if any data assets change.
+1. Start the backend on port `8000`.
+2. Start the frontend on Vite's development server.
+3. Open the landing page and use it as the product presentation layer.
+4. Open `/live` to watch the historical Singapore session replay as LIVE INTELLIGENCE.
+5. Open `/voice` to inspect RADIO NOW, transcript status, and AI interpretation.
+6. Switch playback speed to see how the communication gate reacts as the session advances.
 
 ## License
 
-Refer to the repository license, if present, for usage terms.
+No license file is present at the repository root at the moment.
