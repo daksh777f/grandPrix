@@ -3,12 +3,15 @@ import { Map as MapIcon, ArrowUpRight, ArrowDownRight, RefreshCcw, Cpu } from 'l
 import { fetchLiveAnalysis, type LiveAnalysisData } from '@/lib/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { CornerHistoryPanel } from '@/components/sections/CornerHistoryPanel';
 
 export function LiveIntelligencePage() {
   const [liveData, setLiveData] = useState<LiveAnalysisData | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [currentTick, setCurrentTick] = useState(0);
   const currentTickRef = useRef(0);
+  const [selectedCorner, setSelectedCorner] = useState<string | null>(null);
+  const [hoverCorner, setHoverCorner] = useState<string | null>(null);
 
   const trackPath = useMemo(() => {
     if (!liveData || !liveData.samples || liveData.samples.length === 0) return '';
@@ -23,6 +26,38 @@ export function LiveIntelligencePage() {
         const ny = s.target.y;
         return `${i === 0 ? 'M' : 'L'} ${nx.toFixed(1)} ${ny.toFixed(1)}`;
     }).join(' ');
+  }, [liveData]);
+
+  const cornerPaths = useMemo(() => {
+    if (!liveData || !liveData.samples || liveData.samples.length === 0) return [];
+    const lapSamples = liveData.samples.filter(s => s.lap_number === liveData.samples[0].lap_number);
+    const paths = new Map<string, string>();
+    
+    let currentCorner = "";
+    let currentPath = "";
+    
+    lapSamples.forEach(s => {
+        const cName = s.current_corner.name;
+        if (cName !== "Straight") {
+            const nx = 100 - s.target.x;
+            const ny = s.target.y;
+            if (currentCorner !== cName) {
+                if (currentCorner) paths.set(currentCorner, currentPath);
+                currentCorner = cName;
+                currentPath = `M ${nx.toFixed(1)} ${ny.toFixed(1)}`;
+            } else {
+                currentPath += ` L ${nx.toFixed(1)} ${ny.toFixed(1)}`;
+            }
+        } else {
+            if (currentCorner) {
+                paths.set(currentCorner, currentPath);
+                currentCorner = "";
+                currentPath = "";
+            }
+        }
+    });
+    if (currentCorner) paths.set(currentCorner, currentPath);
+    return Array.from(paths.entries());
   }, [liveData]);
 
 
@@ -46,21 +81,42 @@ export function LiveIntelligencePage() {
     if (!liveData || !liveData.samples?.length) return;
 
     let animationFrameId: number;
-    let lastTime = performance.now();
+    let lastTime: number | null = null;
     let currentLogicalTime = liveData.samples[currentTickRef.current].elapsed;
 
     const tick = (now: number) => {
+      if (lastTime === null) {
+        lastTime = now;
+        animationFrameId = requestAnimationFrame(tick);
+        return;
+      }
+
       const deltaMs = now - lastTime;
       lastTime = now;
+
+      // Cap delta time to prevent massive jumps when tab is inactive
+      if (deltaMs > 1000) {
+        animationFrameId = requestAnimationFrame(tick);
+        return;
+      }
 
       currentLogicalTime += (deltaMs / 1000) * playbackSpeed;
 
       const maxElapsed = liveData.samples[liveData.samples.length - 1].elapsed;
-      if (currentLogicalTime > maxElapsed) {
-        currentLogicalTime = liveData.samples[0].elapsed;
+      // Stop cleanly at the end of the race
+      if (currentLogicalTime >= maxElapsed) {
+        currentLogicalTime = maxElapsed;
+        const lastTick = liveData.samples.length - 1;
+        if (currentTickRef.current !== lastTick) {
+          currentTickRef.current = lastTick;
+          setCurrentTick(lastTick);
+        }
+        return; // End playback
       }
 
       let newTick = currentTickRef.current;
+      
+      // Safety if logical time went backwards (shouldn't happen, but just in case)
       if (currentLogicalTime < liveData.samples[newTick].elapsed) {
         newTick = 0;
       }
@@ -242,11 +298,40 @@ export function LiveIntelligencePage() {
                   <MapIcon className="w-2.5 h-2.5" />
                   TRACK POS
                </div>
+               
+               <AnimatePresence>
+                 {hoverCorner && !selectedCorner && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                      className="absolute top-2 right-2 bg-[#111316] border border-chrome/10 px-3 py-1.5 rounded z-20 text-center shadow-lg"
+                    >
+                      <div className="font-display font-black text-xl text-ink leading-none">{hoverCorner}</div>
+                      <div className="font-mono text-[8px] text-brand-red uppercase tracking-widest mt-0.5">Click for History</div>
+                    </motion.div>
+                 )}
+               </AnimatePresence>
+
                {trackPath && (
                  <svg viewBox="-10 -10 120 120" className="w-full h-full overflow-visible">
                   <path d={trackPath} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   {/* Optionally draw a closing line if start/finish line is separated */}
                   <path d={`${trackPath.split(' ')[0]} ${trackPath.split(' ')[1]} ${trackPath.split(' ')[2]} L ${trackPath.split(' ').slice(-2).join(' ')}`} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeDasharray="2 2" />
+
+                  {/* Corner Hitboxes */}
+                  {cornerPaths.map(([cName, path]) => (
+                    <path
+                      key={cName}
+                      d={path}
+                      fill="none"
+                      stroke={selectedCorner === cName ? "#E10600" : "transparent"}
+                      strokeWidth={selectedCorner === cName ? "4" : "10"}
+                      strokeLinecap="round"
+                      className={cn("cursor-pointer transition-colors", selectedCorner !== cName && "hover:stroke-chrome/20")}
+                      onClick={() => setSelectedCorner(cName)}
+                      onMouseEnter={() => setHoverCorner(cName)}
+                      onMouseLeave={() => setHoverCorner(null)}
+                    />
+                  ))}
 
                   {/* Other Drivers */}
                   {safeSample.others && Object.entries(safeSample.others).map(([drId, pos]) => (
@@ -474,6 +559,14 @@ export function LiveIntelligencePage() {
           </div>
         </div>
       </div>
+
+      <CornerHistoryPanel 
+        sessionKey={9165} 
+        driverNumber={1} 
+        corner={selectedCorner} 
+        liveCorner={safeSample.current_corner.name}
+        onClose={() => setSelectedCorner(null)} 
+      />
 
     </div>
   );

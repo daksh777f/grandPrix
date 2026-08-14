@@ -38,6 +38,11 @@ def get_live_analysis_route(session_key: int, driver_number: int):
 def get_radio_route(session_key: int, driver_number: int):
     return get_radio_intelligence(session_key, driver_number)
 
+@app.get("/api/corner-history/{session_key}/{driver_number}/{corner}")
+def get_corner_history_route(session_key: int, driver_number: int, corner: str):
+    from services.corner_history import get_corner_history
+    return get_corner_history(session_key, driver_number, corner)
+
 @app.post("/api/race-engineer")
 def get_race_engineer_advice_route(request: RaceEngineerRequest):
     return generate_race_engineer_advice(request.corner_metrics)

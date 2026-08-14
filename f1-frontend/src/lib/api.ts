@@ -146,3 +146,36 @@ export async function fetchRadioIntelligence(sessionKey: number, driverNumber: n
   if (!res.ok) throw new Error("Failed to fetch radio intelligence");
   return res.json();
 }
+
+export interface CornerLapData {
+  lap: number;
+  entry_speed: number;
+  brake_progress: number | null;
+  minimum_speed: number;
+  exit_speed: number;
+  estimated_time_delta: number;
+  diagnosis: string;
+}
+
+export interface CornerTrendData {
+  entry_speed: string | null;
+  minimum_speed: string | null;
+  exit_speed: string | null;
+  time_loss: string | null;
+}
+
+export interface CornerHistoryData {
+  session_key: number;
+  driver_number: number;
+  corner: string;
+  trend: CornerTrendData;
+  summary?: string;
+  laps: CornerLapData[];
+  error?: string;
+}
+
+export async function fetchCornerHistory(sessionKey: number, driverNumber: number, corner: string): Promise<CornerHistoryData> {
+  const res = await fetch(`/api/corner-history/${sessionKey}/${driverNumber}/${corner}`);
+  if (!res.ok) throw new Error("Failed to fetch corner history");
+  return res.json();
+}
