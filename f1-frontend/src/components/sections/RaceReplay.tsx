@@ -8,6 +8,7 @@ gsap.registerPlugin(ScrollTrigger);
 
 export function RaceReplay() {
   const [liveData, setLiveData] = useState<LiveAnalysisData | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [currentTick, setCurrentTick] = useState(0);
   const sectionRef = useRef<HTMLElement>(null);
 
@@ -37,6 +38,7 @@ export function RaceReplay() {
         setLiveData(data);
       } catch (err) {
         console.error("Failed to load live analysis data", err);
+        setLoadError(true);
       }
     }
     loadData();
@@ -99,10 +101,10 @@ export function RaceReplay() {
         <div className="mb-12 replay-heading">
           <h2 className="font-display text-3xl md:text-5xl font-bold uppercase tracking-tight text-ink mb-4 flex items-center gap-4">
             <Crosshair className="w-8 h-8 text-chrome" />
-            Live Analysis Engine
+            Live Intelligence Preview
           </h2>
           <p className="font-body text-xl text-ink-muted max-w-2xl">
-            Real-time track progress and AI race engineer recommendations.
+            Historical track progress and race-engineer recommendations.
           </p>
         </div>
 
@@ -113,7 +115,7 @@ export function RaceReplay() {
               <div className="flex justify-between items-center mb-8">
                 <span className="font-mono text-sm text-ink-muted uppercase tracking-wider">Live Analysis</span>
                 <span className="flex items-center gap-2 px-2 py-1 rounded bg-brand-red/10 text-brand-red font-mono text-xs animate-pulse">
-                  <Play className="w-3 h-3" /> LIVE
+                  <Play className="w-3 h-3" /> ARCHIVE
                 </span>
               </div>
 
@@ -123,7 +125,7 @@ export function RaceReplay() {
                   <div className="font-display text-2xl text-ink flex items-center gap-3">
                     <span className="text-[#3671C6] font-bold">VER</span>
                     <span className="text-chrome/30">|</span>
-                    <span>P{currentSample.race_context?.position || 1}</span>
+                    <span>{liveData ? `P${currentSample.race_context?.position || 1}` : '--'}</span>
                     {currentSample.race_context?.battle_active && currentSample.race_context?.is_defending && (
                       <>
                         <span className="text-chrome/30">|</span>
@@ -137,20 +139,20 @@ export function RaceReplay() {
 
                 <div>
                   <div className="font-mono text-xs text-chrome/50 uppercase tracking-widest mb-1">Lap Time</div>
-                  <div className="font-numeric text-5xl text-ink">{formatTime(currentSample.elapsed)}</div>
+                   <div className="font-numeric text-5xl text-ink">{liveData ? formatTime(currentSample.elapsed) : '--'}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="font-mono text-xs text-chrome/50 uppercase tracking-widest mb-1">Speed</div>
-                    <div className="font-numeric text-3xl text-ink">{currentSample.target.speed} <span className="text-sm text-chrome/50">KM/H</span></div>
+                     <div className="font-numeric text-3xl text-ink">{liveData ? currentSample.target.speed : '--'} <span className="text-sm text-chrome/50">KM/H</span></div>
                     {liveData && (
                       <div className="font-mono text-xs text-brand-red mt-1">Δ {currentSample.target.speed - currentSample.benchmark.speed} <span className="text-chrome/50">(vs BMK {currentSample.benchmark.speed})</span></div>
                     )}
                   </div>
                   <div>
                     <div className="font-mono text-xs text-chrome/50 uppercase tracking-widest mb-1">Gear</div>
-                    <div className="font-numeric text-3xl text-ink">{currentSample.target.gear}</div>
+                     <div className="font-numeric text-3xl text-ink">{liveData ? currentSample.target.gear : '--'}</div>
                   </div>
                 </div>
               </div>
@@ -217,9 +219,9 @@ export function RaceReplay() {
                   <text x={normalizedX + 5} y={normalizedY + 1.5} className="font-mono text-[8px]" fill="#F4F1EC" style={{ transition: 'all 50ms linear' }}>VER</text>
                 </svg>
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-chrome/50 font-mono text-sm">
-                  Loading track map...
-                </div>
+                 <div className="w-full h-full flex items-center justify-center text-chrome/50 font-mono text-sm uppercase tracking-widest text-center">
+                   {loadError ? 'Live Intelligence preview unavailable' : 'Loading historical track map...'}
+                 </div>
               )}
             </div>
           </div>

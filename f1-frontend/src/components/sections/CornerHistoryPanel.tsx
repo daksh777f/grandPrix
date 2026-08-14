@@ -64,7 +64,7 @@ export function CornerHistoryPanel({ sessionKey, driverNumber, corner, liveCorne
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 400, opacity: 0 }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="fixed top-28 right-6 bottom-6 w-96 bg-[#0a0a0c]/95 backdrop-blur-md border border-chrome/10 rounded overflow-hidden flex flex-col z-40 shadow-2xl"
+        className="fixed top-28 right-4 sm:right-6 bottom-6 w-[calc(100vw-2rem)] sm:w-96 bg-[#0a0a0c]/95 backdrop-blur-md border border-chrome/10 rounded overflow-hidden flex flex-col z-40 shadow-2xl"
       >
         <div className="flex items-center justify-between p-4 border-b border-chrome/10 bg-[#111316]">
           <div className="flex flex-col">
