@@ -6,6 +6,7 @@ import { Home } from '@/pages/Home';
 import { LiveIntelligencePage } from '@/pages/LiveIntelligencePage';
 import { VoicePage } from '@/pages/VoicePage';
 import { RaceTimelinePage } from '@/pages/RaceTimelinePage';
+import { HistoryPage } from '@/pages/HistoryPage';
 
 function Layout() {
   return (
@@ -33,6 +34,7 @@ function App() {
               <Route path="live" element={<LiveIntelligencePage />} />
               <Route path="voice" element={<VoicePage />} />
               <Route path="timeline" element={<RaceTimelinePage />} />
+              <Route path="history" element={<HistoryPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
@@ -42,3 +44,4 @@ function App() {
 }
 
 export default App;
+

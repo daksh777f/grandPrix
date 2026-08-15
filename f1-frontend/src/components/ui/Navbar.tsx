@@ -20,8 +20,10 @@ export function Navbar() {
   const navLinks = [
     { name: 'LIVE INTELLIGENCE', href: '/live' },
     { name: 'VOICE INTELLIGENCE', href: '/voice' },
-    { name: 'RACE TIMELINE', href: '/timeline' }
+    { name: 'RACE TIMELINE', href: '/timeline' },
+    { name: 'HISTORY', href: '/history' }
   ];
+
 
   const handleNavClick = (href: string) => {
     setMobileMenuOpen(false);
@@ -59,7 +61,7 @@ export function Navbar() {
           </Link>
 
           {/* Desktop Links */}
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden lg:flex items-center gap-6">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
@@ -78,7 +80,7 @@ export function Navbar() {
 
           {/* Mobile Hamburger Toggle */}
           <button
-            className="md:hidden relative z-50 p-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm ml-auto"
+            className="lg:hidden relative z-50 p-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red rounded-sm ml-auto"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle menu"
           >
@@ -95,7 +97,7 @@ export function Navbar() {
             animate={{ opacity: 1, y: '0%' }}
             exit={{ opacity: 0, y: '-100%' }}
             transition={{ duration: 0.4, ease: 'easeInOut' }}
-            className="fixed inset-0 z-30 bg-asphalt flex flex-col items-center justify-center gap-8 md:hidden"
+            className="fixed inset-0 z-30 bg-asphalt flex flex-col items-center justify-center gap-8 lg:hidden"
           >
             {navLinks.map((link) => (
               <Link

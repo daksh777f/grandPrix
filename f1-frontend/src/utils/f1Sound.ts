@@ -1,108 +1,175 @@
-// Web Audio API Synthesizer for F1 V10 Engine Sound FX
+// Audio Engine player for F1.mp4 (Trimmed to start at 10 seconds)
+
+const START_OFFSET_SECONDS = 10.0;
 
 class F1AudioEngine {
-  private ctx: AudioContext | null = null;
+  private audioCtx: AudioContext | null = null;
+  private trimmedBuffer: AudioBuffer | null = null;
+  private currentSource: AudioBufferSourceNode | null = null;
   private isPlaying = false;
-  private activeOscillators: OscillatorNode[] = [];
-  private masterGain: GainNode | null = null;
+  private isLoading = false;
+  private fallbackAudio: HTMLAudioElement | null = null;
 
-  private initContext() {
-    if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtx();
-    }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      // Pre-load audio buffer in the background
+      this.loadAudioBuffer();
     }
   }
 
-  // Play a quick engine rev pulse (0-350 km/h acceleration sound)
-  playRev() {
+  private async loadAudioBuffer() {
+    if (this.trimmedBuffer || this.isLoading || typeof window === 'undefined') return;
+    this.isLoading = true;
+
     try {
-      this.initContext();
-      if (!this.ctx) return;
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      this.audioCtx = new AudioCtx();
 
-      const now = this.ctx.currentTime;
+      const res = await fetch('/F1.mp4');
+      const arrayBuffer = await res.arrayBuffer();
+      const fullBuffer = await this.audioCtx.decodeAudioData(arrayBuffer);
 
-      const master = this.ctx.createGain();
-      master.gain.setValueAtTime(0.15, now);
-      master.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
-      master.connect(this.ctx.destination);
+      // Cut out the first 10 seconds into a new buffer
+      const sampleRate = fullBuffer.sampleRate;
+      const startSample = Math.floor(START_OFFSET_SECONDS * sampleRate);
+      const totalSamples = fullBuffer.length;
 
-      // Fundamental frequency (simulating high RPM V10 engine harmonic series)
-      const freqs = [180, 360, 540, 720, 900, 1260];
+      if (totalSamples > startSample) {
+        const trimmedLength = totalSamples - startSample;
+        const channels = fullBuffer.numberOfChannels;
+        const trimmed = this.audioCtx.createBuffer(channels, trimmedLength, sampleRate);
 
-      freqs.forEach((freq, idx) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-
-        // Sawtooth & Triangle wave combination for raw metallic exhaust pitch
-        osc.type = idx % 2 === 0 ? 'sawtooth' : 'triangle';
-
-        // Pitch envelope: Start mid-rpm, scream up, then shift drop
-        osc.frequency.setValueAtTime(freq, now);
-        osc.frequency.exponentialRampToValueAtTime(freq * 3.5, now + 0.6);
-        osc.frequency.setValueAtTime(freq * 2.2, now + 0.62); // Shift gear drop
-        osc.frequency.exponentialRampToValueAtTime(freq * 4.2, now + 1.1);
-
-        gain.gain.setValueAtTime(0.2 / (idx + 1), now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
-
-        osc.connect(gain);
-        gain.connect(master);
-
-        osc.start(now);
-        osc.stop(now + 1.2);
-      });
+        for (let c = 0; c < channels; c++) {
+          const srcData = fullBuffer.getChannelData(c);
+          const dstData = trimmed.getChannelData(c);
+          dstData.set(srcData.subarray(startSample));
+        }
+        this.trimmedBuffer = trimmed;
+      } else {
+        this.trimmedBuffer = fullBuffer;
+      }
     } catch (e) {
-      console.warn("F1 Audio Synthesizer fallback:", e);
+      console.warn("Web Audio decode fallback to HTMLAudioElement:", e);
+      this.initFallbackAudio();
+    } finally {
+      this.isLoading = false;
     }
   }
 
-  // Toggle continuous engine idling background roar
+  private initFallbackAudio() {
+    if (!this.fallbackAudio && typeof window !== 'undefined') {
+      this.fallbackAudio = new Audio('/F1.mp4');
+      this.fallbackAudio.volume = 0.75;
+      this.fallbackAudio.addEventListener('ended', () => {
+        if (this.isPlaying && this.fallbackAudio) {
+          this.fallbackAudio.currentTime = START_OFFSET_SECONDS;
+          this.fallbackAudio.play().catch(() => {});
+        } else {
+          this.isPlaying = false;
+        }
+      });
+    }
+  }
+
+  // Play acceleration pulse from 10s cutout
+  playRev() {
+    if (this.audioCtx && this.trimmedBuffer) {
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+      this.stopAll();
+
+      const source = this.audioCtx.createBufferSource();
+      const gain = this.audioCtx.createGain();
+      source.buffer = this.trimmedBuffer;
+      source.loop = false;
+      gain.gain.setValueAtTime(0.85, this.audioCtx.currentTime);
+
+      source.connect(gain);
+      gain.connect(this.audioCtx.destination);
+      source.start(0);
+
+      this.currentSource = source;
+      this.isPlaying = true;
+      source.onended = () => {
+        this.isPlaying = false;
+      };
+      return;
+    }
+
+    // Fallback if buffer is still fetching
+    this.initFallbackAudio();
+    if (this.fallbackAudio) {
+      try {
+        this.fallbackAudio.currentTime = START_OFFSET_SECONDS;
+        this.fallbackAudio.volume = 0.85;
+        this.fallbackAudio.play().catch((e) => console.warn("Audio play prevented:", e));
+        this.isPlaying = true;
+      } catch (e) {
+        console.warn("Playback error:", e);
+      }
+    }
+  }
+
+  // Toggle continuous playback starting at 10s mark with seamless loop
   toggleContinuous(on: boolean) {
     if (!on) {
       this.stopAll();
       return;
     }
-    this.initContext();
-    if (!this.ctx) return;
 
-    this.stopAll();
-    const now = this.ctx.currentTime;
+    if (this.audioCtx && this.trimmedBuffer) {
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+      this.stopAll();
 
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.05, now);
-    this.masterGain.connect(this.ctx.destination);
+      const source = this.audioCtx.createBufferSource();
+      const gain = this.audioCtx.createGain();
+      source.buffer = this.trimmedBuffer;
+      source.loop = true;
+      gain.gain.setValueAtTime(0.75, this.audioCtx.currentTime);
 
-    const baseFreqs = [120, 240, 480];
-    baseFreqs.forEach((f) => {
-      if (!this.ctx || !this.masterGain) return;
-      const osc = this.ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(f, now);
+      source.connect(gain);
+      gain.connect(this.audioCtx.destination);
+      source.start(0);
 
-      // Low LFO modulation for idling rumble
-      const lfo = this.ctx.createOscillator();
-      const lfoGain = this.ctx.createGain();
-      lfo.frequency.value = 8;
-      lfoGain.gain.value = 15;
-      lfo.connect(osc.frequency);
+      this.currentSource = source;
+      this.isPlaying = true;
+      return;
+    }
 
-      osc.connect(this.masterGain);
-      osc.start();
-      lfo.start();
-      this.activeOscillators.push(osc, lfo);
-    });
-    this.isPlaying = true;
+    // Fallback HTMLAudioElement
+    this.initFallbackAudio();
+    if (this.fallbackAudio) {
+      try {
+        if (this.fallbackAudio.currentTime < START_OFFSET_SECONDS) {
+          this.fallbackAudio.currentTime = START_OFFSET_SECONDS;
+        }
+        this.fallbackAudio.volume = 0.75;
+        this.fallbackAudio.play().catch((e) => console.warn("Audio play prevented:", e));
+        this.isPlaying = true;
+      } catch (e) {
+        console.warn("Playback error:", e);
+      }
+    }
   }
 
   stopAll() {
-    this.activeOscillators.forEach(o => {
-      try { o.stop(); } catch {}
-    });
-    this.activeOscillators = [];
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop();
+        this.currentSource.disconnect();
+      } catch {}
+      this.currentSource = null;
+    }
+    if (this.fallbackAudio) {
+      try {
+        this.fallbackAudio.pause();
+        this.fallbackAudio.currentTime = START_OFFSET_SECONDS;
+      } catch {}
+    }
     this.isPlaying = false;
   }
 
@@ -112,3 +179,5 @@ class F1AudioEngine {
 }
 
 export const f1Audio = new F1AudioEngine();
+
+
