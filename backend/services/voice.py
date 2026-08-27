@@ -4,11 +4,11 @@ Hugging Face extracts speech and vocal-state signals. Ollama is only used
 afterward to phrase a race-engineer interpretation from structured evidence.
 """
 
-import hashlib
 import json
 import os
 import re
 import threading
+import torch
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,6 +20,7 @@ from data.singapore_2023_track import CORNERS
 from services.live_analysis import calculate_progress, load_driver_data, load_laps
 from services.race_context import get_race_context
 from services.race_engineer import generate_voice_interpretation
+from services.voice_identity import cache_stem, event_id
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -42,34 +43,6 @@ _cache_lock = threading.Lock()
 def _ensure_cache_dirs() -> None:
     for directory in (AUDIO_DIR, TRANSCRIPT_DIR, VOICE_ANALYSIS_DIR):
         os.makedirs(directory, exist_ok=True)
-
-
-def _safe_stem(session_key: int, driver_number: int, recording_url: str) -> str:
-    parsed_name = os.path.basename(urlparse(recording_url).path)
-    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", parsed_name) or "radio"
-    digest = hashlib.sha1(recording_url.encode("utf-8")).hexdigest()[:10]
-    return f"{session_key}_{driver_number}_{stem}_{digest}"
-
-
-def _event_id(
-    session_key: int,
-    driver_number: int,
-    timestamp: pd.Timestamp,
-    lap: int | None,
-    corner: str | None,
-    progress: float | None,
-) -> str:
-    """Return a stable identity for one radio/telemetry event."""
-    progress_key = "" if progress is None else f"{progress:.6f}"
-    canonical = "|".join([
-        str(session_key),
-        str(driver_number),
-        timestamp.isoformat(),
-        str(lap or ""),
-        corner or "",
-        progress_key,
-    ])
-    return f"radio_{hashlib.sha1(canonical.encode('utf-8')).hexdigest()[:16]}"
 
 
 def _read_json(path: str) -> dict[str, Any] | None:
@@ -148,7 +121,8 @@ def _get_pipeline(kind: str):
                 model=ASR_MODEL_ID,
                 token=token,
                 chunk_length_s=30,
-                device=-1,
+                device=0 if torch.cuda.is_available() else -1,
+                generate_kwargs={"language": "en"},
             )
         elif kind == "emotion" and _emotion_pipeline is None:
             from transformers import pipeline
@@ -159,7 +133,7 @@ def _get_pipeline(kind: str):
                 model=EMOTION_MODEL_ID,
                 token=token,
                 top_k=None,
-                device=-1,
+                device=0 if torch.cuda.is_available() else -1,
             )
 
     return _asr_pipeline if kind == "asr" else _emotion_pipeline
@@ -371,6 +345,17 @@ def _fallback_interpretation(transcript: str | None, voice: dict[str, Any], cont
     voice_state = voice.get("voice_state")
     emotion = voice.get("emotion")
 
+    if corner == "Straight":
+        if transcript:
+            observation = "Recent radio provides driver context during a straight; no corner diagnosis is attached."
+            advice = "Follow the team's race guidance and manage the current race situation."
+        else:
+            observation = "No corner diagnosis is attached to this straight section."
+            advice = "No driver instruction required."
+        if voice_state and voice_state != "UNAVAILABLE":
+            observation += f" Voice state is {voice_state.lower().replace('_', ' ')}."
+        return {"message": observation, "advice": advice, "status": "FALLBACK"}
+
     if diagnosis == "EARLY_BRAKING":
         advice = f"Release the brake progressively and carry more speed into {corner}."
         observation = f"The radio transmission aligns with an entry deficit at {corner}."
@@ -400,7 +385,10 @@ def _fallback_interpretation(transcript: str | None, voice: dict[str, Any], cont
 def _interpret(transcript: str | None, voice: dict[str, Any], context: dict[str, Any], cache_path: str) -> dict[str, str] | None:
     cached = _read_json(cache_path)
     if cached is not None and cached.get("status") in {"READY", "FALLBACK"}:
-        return cached
+        if context.get("corner") == "Straight" and "Straight telemetry" in str(cached.get("message", "")):
+            cached = None
+        else:
+            return cached
 
     if not transcript:
         return None
@@ -449,7 +437,7 @@ def get_voice_intelligence(session_key: int, driver_number: int) -> dict[str, An
         if not recording_url or recording_url == "nan":
             continue
 
-        stem = _safe_stem(session_key, driver_number, recording_url)
+        stem = cache_stem(session_key, driver_number, recording_url)
         cached_file_name = f"{stem}.mp3"
         cached_audio_path = os.path.join(AUDIO_DIR, cached_file_name)
         legacy_file_name = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(urlparse(recording_url).path))
@@ -486,10 +474,10 @@ def get_voice_intelligence(session_key: int, driver_number: int) -> dict[str, An
         interpretation_path = os.path.join(VOICE_ANALYSIS_DIR, f"{stem}_interpretation.json")
         interpretation = _interpret(transcript_data.get("transcript"), emotion_data, context, interpretation_path)
 
-        event_id = _event_id(
+        radio_event_id = event_id(
             session_key,
             driver_number,
-            timestamp,
+            timestamp.isoformat(),
             context["lap"],
             context["corner"],
             context["progress"],
@@ -501,7 +489,7 @@ def get_voice_intelligence(session_key: int, driver_number: int) -> dict[str, An
         local_audio_url = f"/audio/{file_name}" if audio_available else None
         performance = context["performance"]
         messages.append({
-            "event_id": event_id,
+            "event_id": radio_event_id,
             "timestamp": timestamp.isoformat(),
             "elapsed": elapsed,
             "driver_number": driver_number,

@@ -93,5 +93,40 @@
     "message": "Target driver is losing 0.771s to benchmark driver, with top losses in T8 (0.421s) and T2 (0.34s).",
     "advice": "Focus on improving braking technique at T8 and increasing minimum speed at T2 for the next lap.",
     "status": "READY"
+  },
+  "9165:1:4:19": {
+    "message": "Focus on reducing the time loss in T18 by increasing entry speed to match NOR's pace, as LOW_MIN_SPEED is a recurring issue.",
+    "advice": "Increase entry speed at T18 and maintain it through the corner to minimize time loss.",
+    "status": "READY"
+  },
+  "9165:1:4:20": {
+    "message": "Focus on improving entry speed at T13 to match NOR's pace, as it accounts for the majority of your lap delta.",
+    "advice": "Increase entry speed at T13 by 71 km/h to minimize time loss and gain a competitive edge.",
+    "status": "READY"
+  },
+  "9165:1:4:21": {
+    "message": "Focus on improving entry speed at T6 and T5 to minimize time losses, and maintain a consistent minimum speed through T12.",
+    "advice": "Optimize your approach to T6 and T5 by increasing entry speed to reduce time loss, while maintaining a steady pace through T12.",
+    "status": "READY"
+  },
+  "9165:1:4:22": {
+    "message": "Focus on improving entry speed at T1 and T14 to match the benchmark driver's pace.",
+    "advice": "Increase entry speed by 2-3 km/h at these corners to gain 0.7 seconds of lap time.",
+    "status": "READY"
+  },
+  "9165:1:4:23": {
+    "message": "Focus on improving exit speed at T12 to minimize time loss and maintain pace.",
+    "advice": "Increase engine power output in the next lap to compensate for the low minimum speed at T12.",
+    "status": "READY"
+  },
+  "9165:1:4:24": {
+    "message": "Focus on improving entry speed at T6 and T18 to minimize time losses, leveraging NOR's strengths.",
+    "advice": "Increase entry speed at T6 and T18 by 1-2 km/h in the next lap.",
+    "status": "READY"
+  },
+  "9165:1:4:25": {
+    "message": "Focus on increasing minimum speed through T17 to match NOR's pace, as it accounts for the majority of lap delta.",
+    "advice": "Prioritize building up minimum speed through T17 in the next lap.",
+    "status": "READY"
   }
 }

@@ -7,6 +7,7 @@ from services.race_engineer import generate_race_engineer_advice
 from services.voice import get_voice_intelligence
 from services.timeline import get_race_timeline
 from services.lap_comparison import get_completed_comparison_laps, get_default_benchmark_driver, get_lap_comparison, get_recent_comparisons
+from services.voice_context import enrich_live_analysis
 from pydantic import BaseModel
 from typing import Dict, Any
 from fastapi.staticfiles import StaticFiles
@@ -39,7 +40,7 @@ def get_replay(session_key: int, driver_number: int, lap: int = 2):
 
 @app.get("/api/live-analysis/{session_key}/{driver_number}")
 def get_live_analysis_route(session_key: int, driver_number: int):
-    return get_live_analysis(session_key, driver_number)
+    return enrich_live_analysis(get_live_analysis(session_key, driver_number))
 
 @app.get("/api/voice/{session_key}/{driver_number}")
 def get_voice_route(session_key: int, driver_number: int):

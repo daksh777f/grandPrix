@@ -8,6 +8,21 @@ export interface Driver {
   country_code: string;
 }
 
+export interface VoiceContext {
+  available: boolean;
+  event_id: string;
+  timestamp: string;
+  elapsed: number;
+  lap: number;
+  corner: string | null;
+  phase: string | null;
+  progress: number | null;
+  transcript: string | null;
+  voice_state: string | null;
+  vocal_arousal: number | null;
+  emotion: string | null;
+}
+
 export interface VoiceIntelligenceMessage {
   event_id: string;
   timestamp: string;
@@ -151,6 +166,7 @@ export interface LiveAnalysisSample {
     reason: string | null;
     cooldown_remaining: number;
   };
+  voice_context?: VoiceContext | null;
 }
 
 export interface LiveAnalysisData {

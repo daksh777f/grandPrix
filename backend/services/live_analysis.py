@@ -83,6 +83,21 @@ def calculate_progress(lap_df):
     return lap_df
 
 
+def _sanitize_straight_analysis(result):
+    """Prevent corner findings from leaking into straight sections."""
+    for sample in result.get("samples", []):
+        if sample.get("current_corner", {}).get("name") == "Straight":
+            sample["analysis"] = {
+                "diagnosis": "NONE",
+                "severity": "low",
+                "estimated_time_delta": None,
+                "confidence": None,
+                "message": "No corner diagnosis in this section.",
+                "advice": "No driver instruction required.",
+            }
+    return result
+
+
 def get_live_analysis(session_key: int, target_driver: int):
     cache_key = f"live_analysis_{session_key}_{target_driver}"
     if cache_key in _cache:
@@ -92,6 +107,7 @@ def get_live_analysis(session_key: int, target_driver: int):
     if os.path.exists(cache_file):
         with open(cache_file, "r") as f:
             result = json.load(f)
+            result = _sanitize_straight_analysis(result)
             _cache[cache_key] = result
             return result
 
@@ -261,7 +277,16 @@ def get_live_analysis(session_key: int, target_driver: int):
 
             metrics = corner_metrics.get(current_corner)
 
-            if metrics:
+            if current_corner == "Straight":
+                analysis = {
+                    "diagnosis": "NONE",
+                    "severity": "low",
+                    "estimated_time_delta": None,
+                    "confidence": None,
+                    "message": "No corner diagnosis in this section.",
+                    "advice": "No driver instruction required.",
+                }
+            elif metrics:
                 comp = {
                     "entry_speed_delta": metrics["entry_speed_delta"],
                     "minimum_speed_delta": metrics["minimum_speed_delta"],
@@ -282,9 +307,9 @@ def get_live_analysis(session_key: int, target_driver: int):
                     "entry_speed_delta": 0, "minimum_speed_delta": 0, "exit_speed_delta": 0,
                     "braking_delta": 0, "throttle_delay": 0
                 }
-                analysis = last_meaningful_advice if last_meaningful_advice else {
-                    "diagnosis": "GOOD", "severity": "low", "estimated_time_delta": 0,
-                    "confidence": 0.99, "advice": "Keep pushing."
+                analysis = {
+                    "diagnosis": "NONE", "severity": "low", "estimated_time_delta": None,
+                    "confidence": None, "advice": "Keep pushing."
                 }
 
             nx = ((row['x'] - min_x) / x_range) * 100 if x_range != 0 else 50
@@ -357,7 +382,10 @@ def get_live_analysis(session_key: int, target_driver: int):
             "cooldown_remaining": max(0, cooldowns.get(dedup_key, 0) - elapsed)
         }
 
-        if diag == "GOOD" or diag == "None" or corner == "Straight":
+        race_ctx = sample.get("race_context", {})
+        has_race_event = race_ctx.get("battle_active", False) or race_ctx.get("position_event", "NO_CHANGE") != "NO_CHANGE"
+
+        if (diag in {"GOOD", "None", "NONE"} or corner == "Straight") and not has_race_event:
             sample["communication"] = comm
             active_radio_event = None
             continue
@@ -390,13 +418,16 @@ def get_live_analysis(session_key: int, target_driver: int):
 
             continue
 
-        meets_confidence = confidence >= MIN_RADIO_CONFIDENCE
-        meets_moderate = (time_loss >= MIN_RADIO_TIME_LOSS and consecutive_laps >= MIN_RADIO_PERSISTENCE)
-        meets_immediate = (time_loss >= HIGH_SEVERITY_TIME_LOSS)
+        # Handle confidence which might be None for Straight
+        safe_confidence = confidence if confidence is not None else 0.0
+        meets_confidence = safe_confidence >= MIN_RADIO_CONFIDENCE
+        meets_moderate = (time_loss is not None and time_loss >= MIN_RADIO_TIME_LOSS and consecutive_laps >= MIN_RADIO_PERSISTENCE)
+        meets_immediate = (time_loss is not None and time_loss >= HIGH_SEVERITY_TIME_LOSS)
+        meets_strategic = has_race_event and (corner == "Straight" or diag in {"GOOD", "None", "NONE"})
 
-        if meets_confidence and (meets_moderate or meets_immediate):
+        if (meets_confidence and (meets_moderate or meets_immediate)) or meets_strategic:
             last_loss = dedup_last_communicated_loss.get(dedup_key, 0)
-            materially_worse = (time_loss >= last_loss + MATERIAL_WORSENING_DELTA)
+            materially_worse = (time_loss is not None and time_loss >= last_loss + MATERIAL_WORSENING_DELTA)
             on_cooldown = elapsed < cooldowns.get(dedup_key, 0)
 
             can_speak = False
@@ -409,7 +440,11 @@ def get_live_analysis(session_key: int, target_driver: int):
                 comm["state"] = "RADIO_NOW"
                 comm["should_speak"] = True
                 comm["priority"] = "HIGH" if meets_immediate else "MEDIUM"
-                comm["reason"] = f"{diag} at {corner} ({time_loss:.2f}s loss)"
+                
+                if meets_strategic:
+                    comm["reason"] = "Strategic race context"
+                else:
+                    comm["reason"] = f"{diag} at {corner} ({time_loss:.2f}s loss)"
 
                 cooldowns[dedup_key] = elapsed + RADIO_COOLDOWN_SECONDS
                 comm["cooldown_remaining"] = RADIO_COOLDOWN_SECONDS
