@@ -6,6 +6,9 @@ import { Home } from '@/pages/Home';
 import { LiveIntelligencePage } from '@/pages/LiveIntelligencePage';
 import { VoicePage } from '@/pages/VoicePage';
 import { RaceTimelinePage } from '@/pages/RaceTimelinePage';
+import { HistoryPage } from '@/pages/HistoryPage';
+
+import { TyrePage } from '@/pages/TyrePage';
 
 function Layout() {
   return (
@@ -31,8 +34,10 @@ function App() {
             <Route path="/" element={<Layout />}>
               <Route index element={<Home />} />
               <Route path="live" element={<LiveIntelligencePage />} />
+              <Route path="tyres" element={<TyrePage />} />
               <Route path="voice" element={<VoicePage />} />
               <Route path="timeline" element={<RaceTimelinePage />} />
+              <Route path="history" element={<HistoryPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
@@ -42,3 +47,4 @@ function App() {
 }
 
 export default App;
+

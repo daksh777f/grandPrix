@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
 import os
+import time
 
 _cache = {}
+_context_timeline_cache = {}
 
 BATTLE_GAP_THRESHOLD = 0.25
 MAX_INTERVAL_AGE_SECONDS = 15.0
@@ -23,98 +25,159 @@ def load_csv(filename):
     _cache[filename] = df
     return df
 
-def get_race_context(session_key: int, target_driver: int, timestamps: pd.Series) -> list:
-    """
-    Given a series of timestamps (from telemetry), compute the race context at each timestamp.
-    """
+def _build_context_timeline(session_key: int, target_driver: int):
+    cache_key = (session_key, target_driver)
+    if cache_key in _context_timeline_cache:
+        return _context_timeline_cache[cache_key]
+
     pos_df = load_csv("position.csv")
     int_df = load_csv("intervals.csv")
 
     if pos_df is None or int_df is None:
-        # Fallback if files missing
-        return [None] * len(timestamps)
+        return np.array([]), []
 
-    pos_df = pos_df[pos_df['session_key'] == session_key]
-    int_df = int_df[int_df['session_key'] == session_key]
+    pos_df = pos_df[pos_df['session_key'] == session_key].sort_values('date').reset_index(drop=True)
+    int_df = int_df[int_df['session_key'] == session_key].sort_values('date').reset_index(drop=True)
 
-    contexts = []
-    target_pos_history = pos_df[pos_df['driver_number'] == target_driver]
+    target_pos_df = pos_df[pos_df['driver_number'] == target_driver].sort_values('date').reset_index(drop=True)
 
-    for ts in timestamps:
-        ctx = {
-            "position": None,
-            "driver_behind": None,
-            "gap_behind": None,
-            "battle_active": False,
-            "is_defending": False,
-            "position_event": "NO_CHANGE"
+    # Pre-index intervals by driver
+    intervals_by_driver = {}
+    for d_num, group in int_df.groupby('driver_number'):
+        valid_grp = group.dropna(subset=['interval']).sort_values('date').reset_index(drop=True)
+        intervals_by_driver[int(d_num)] = {
+            "dates": valid_grp['date'].to_numpy(),
+            "intervals": pd.to_numeric(valid_grp['interval'], errors='coerce').to_numpy()
         }
 
-        # Find target position at ts
-        t_pos_records = target_pos_history[target_pos_history['date'] <= ts]
-        if t_pos_records.empty:
-            contexts.append(ctx)
+    # All unique event dates in pos_df
+    event_dates = pos_df['date'].to_numpy()
+    
+    # Track field positions over time
+    current_positions = {}
+    target_pos_history = []
+    
+    timeline_records = []
+    
+    target_dates = target_pos_df['date'].to_numpy()
+    target_positions_arr = target_pos_df['position'].astype(int).to_numpy()
+
+    for row in pos_df.itertuples():
+        d_num = int(row.driver_number)
+        p_val = int(row.position)
+        current_positions[d_num] = p_val
+        ts = row.date
+
+        # Target position at ts
+        t_idx = np.searchsorted(target_dates, ts, side='right') - 1
+        if t_idx < 0:
+            timeline_records.append({
+                "position": None,
+                "driver_behind": None,
+                "gap_behind": None,
+                "battle_active": False,
+                "is_defending": False,
+                "position_event": "NO_CHANGE"
+            })
             continue
 
-        current_pos = int(t_pos_records.iloc[-1]['position'])
-        ctx["position"] = current_pos
-
-        # Check position event (if changed within the last lap roughly)
-        # To avoid NO_CHANGE triggering every sample, we track state,
-        # but the request asks to output "POSITION_GAIN" if the position changed.
-        # Let's compare the most recent position to the one before it.
-        # But if the position changed 10 minutes ago, is it still a recent event?
-        # A simple approach: we check if the most recent position record happened recently.
-        # For simplicity, we just use the most recent transition. But LLM will be called per corner,
-        # so if the LLM receives "POSITION_GAIN" for every corner after a gain, that's fine. It'll adapt.
-        if len(t_pos_records) >= 2:
-            prev_pos = int(t_pos_records.iloc[-2]['position'])
-            diff = prev_pos - current_pos # e.g. 5 to 4 means +1 (gain)
-
-            # Only flag as an event if it happened recently (within 30 seconds)
-            time_since_change = (ts - t_pos_records.iloc[-1]['date']).total_seconds()
+        cur_pos = target_positions_arr[t_idx]
+        
+        # Check position event
+        pos_event = "NO_CHANGE"
+        if t_idx >= 1:
+            prev_pos = target_positions_arr[t_idx - 1]
+            diff = prev_pos - cur_pos
+            time_since_change = (ts - target_dates[t_idx]).total_seconds()
             if time_since_change <= 30.0:
                 if diff == 1:
-                    ctx["position_event"] = "POSITION_GAIN"
+                    pos_event = "POSITION_GAIN"
                 elif diff > 1:
-                    ctx["position_event"] = "MULTI_POSITION_GAIN"
+                    pos_event = "MULTI_POSITION_GAIN"
                 elif diff == -1:
-                    ctx["position_event"] = "POSITION_LOSS"
+                    pos_event = "POSITION_LOSS"
                 elif diff < -1:
-                    ctx["position_event"] = "MULTI_POSITION_LOSS"
+                    pos_event = "MULTI_POSITION_LOSS"
 
-        # Find driver behind
-        field_pos = pos_df[pos_df['date'] <= ts]
-        if not field_pos.empty:
-            latest_field_pos = field_pos.groupby('driver_number').last().reset_index()
-            driver_behind_row = latest_field_pos[latest_field_pos['position'] == current_pos + 1]
-            if not driver_behind_row.empty:
-                driver_behind = int(driver_behind_row.iloc[0]['driver_number'])
-                ctx["driver_behind"] = driver_behind
+        # Driver behind
+        driver_behind = None
+        for d, p in current_positions.items():
+            if p == cur_pos + 1 and d != target_driver:
+                driver_behind = d
+                break
 
-                db_intervals = int_df[(int_df['driver_number'] == driver_behind) & (int_df['date'] <= ts)]
+        gap_behind = None
+        battle_active = False
+        is_defending = False
 
-                if not db_intervals.empty:
-                    valid_db_intervals = db_intervals.dropna(subset=['interval'])
+        if driver_behind is not None and driver_behind in intervals_by_driver:
+            db_data = intervals_by_driver[driver_behind]
+            int_dates = db_data["dates"]
+            int_vals = db_data["intervals"]
 
-                    if not valid_db_intervals.empty:
-                        latest_interval = valid_db_intervals.iloc[-1]
-                        age = (ts - latest_interval['date']).total_seconds()
+            i_idx = np.searchsorted(int_dates, ts, side='right') - 1
+            if i_idx >= 0:
+                age = (ts - pd.Timestamp(int_dates[i_idx])).total_seconds()
+                if age <= MAX_INTERVAL_AGE_SECONDS and not np.isnan(int_vals[i_idx]):
+                    gap = float(int_vals[i_idx])
+                    gap_behind = round(gap, 3)
 
-                        if age <= MAX_INTERVAL_AGE_SECONDS:
-                            try:
-                                gap = float(latest_interval['interval'])
-                                ctx["gap_behind"] = round(gap, 3)
+                    # Check last N observations
+                    start_i = max(0, i_idx - BATTLE_MIN_VALID_OBSERVATIONS + 1)
+                    last_n = int_vals[start_i:i_idx + 1]
+                    if len(last_n) >= BATTLE_MIN_VALID_OBSERVATIONS:
+                        if np.all(last_n < BATTLE_GAP_THRESHOLD):
+                            battle_active = True
+                            is_defending = True
 
-                                last_n = valid_db_intervals.tail(BATTLE_MIN_VALID_OBSERVATIONS)
-                                if len(last_n) >= BATTLE_MIN_VALID_OBSERVATIONS:
-                                    all_close = all(float(r['interval']) < BATTLE_GAP_THRESHOLD for _, r in last_n.iterrows())
-                                    if all_close:
-                                        ctx["battle_active"] = True
-                                        ctx["is_defending"] = True
-                            except ValueError:
-                                pass # In case interval is not parseable
+        timeline_records.append({
+            "position": cur_pos,
+            "driver_behind": driver_behind,
+            "gap_behind": gap_behind,
+            "battle_active": battle_active,
+            "is_defending": is_defending,
+            "position_event": pos_event
+        })
 
-        contexts.append(ctx)
+    result = (event_dates, timeline_records, target_dates, target_positions_arr)
+    _context_timeline_cache[cache_key] = result
+    return result
+
+def get_race_context(session_key: int, target_driver: int, timestamps: pd.Series) -> list:
+    """
+    Fast, precomputed race context evaluation using binary search.
+    """
+    event_dates, timeline_records, target_dates, target_positions_arr = _build_context_timeline(session_key, target_driver)
+    if len(event_dates) == 0:
+        return [None] * len(timestamps)
+
+    ts_arr = timestamps.to_numpy()
+    indices = np.searchsorted(event_dates, ts_arr, side='right') - 1
+
+    contexts = []
+    num_events = len(timeline_records)
+
+    for i, ts in zip(indices, timestamps):
+        if i < 0:
+            contexts.append({
+                "position": None,
+                "driver_behind": None,
+                "gap_behind": None,
+                "battle_active": False,
+                "is_defending": False,
+                "position_event": "NO_CHANGE"
+            })
+        elif i < num_events:
+            rec = timeline_records[i]
+            # Verify if position event expired relative to query timestamp ts
+            t_idx = np.searchsorted(target_dates, ts, side='right') - 1
+            rec_copy = rec.copy()
+            if t_idx >= 1:
+                time_since_change = (ts - target_dates[t_idx]).total_seconds()
+                if time_since_change > 30.0:
+                    rec_copy["position_event"] = "NO_CHANGE"
+            contexts.append(rec_copy)
+        else:
+            contexts.append(timeline_records[-1].copy())
 
     return contexts

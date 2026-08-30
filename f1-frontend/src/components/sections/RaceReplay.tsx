@@ -69,8 +69,10 @@ export function RaceReplay() {
   } as unknown as import("@/lib/api").LiveAnalysisSample);
   const lapNum = liveData?.lap_number || "--";
 
-  const normalizedX = liveData ? (100 - currentSample.target.x) : 50;
-  const normalizedY = liveData ? currentSample.target.y : 50;
+  const targetX = (typeof currentSample?.target?.x === 'number' && !isNaN(currentSample.target.x)) ? currentSample.target.x : 50;
+  const targetY = (typeof currentSample?.target?.y === 'number' && !isNaN(currentSample.target.y)) ? currentSample.target.y : 50;
+  const normalizedX = 100 - targetX;
+  const normalizedY = targetY;
 
   const trackPath = useMemo(() => {
     if (!liveData || !liveData.samples || liveData.samples.length === 0) return '';
@@ -81,8 +83,8 @@ export function RaceReplay() {
     const downsampled = lapSamples.filter((_, i) => i % 3 === 0);
 
     return downsampled.map((s, i) => {
-        const nx = 100 - s.target.x;
-        const ny = s.target.y;
+        const nx = (typeof s?.target?.x === 'number' && !isNaN(s.target.x)) ? 100 - s.target.x : 50;
+        const ny = (typeof s?.target?.y === 'number' && !isNaN(s.target.y)) ? s.target.y : 50;
         return `${i === 0 ? 'M' : 'L'} ${nx.toFixed(1)} ${ny.toFixed(1)}`;
     }).join(' ');
   }, [liveData]);
@@ -206,12 +208,15 @@ export function RaceReplay() {
                   />
 
                   {/* Optionally draw a closing line if start/finish line is separated */}
-                  <path d={`${trackPath.split(' ')[0]} ${trackPath.split(' ')[1]} ${trackPath.split(' ')[2]} L ${trackPath.split(' ').slice(-2).join(' ')}`} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeDasharray="2 2" />
+                  {trackPath.split(' ').length >= 3 && (
+                    <path d={`${trackPath.split(' ')[0]} ${trackPath.split(' ')[1]} ${trackPath.split(' ')[2]} L ${trackPath.split(' ').slice(-2).join(' ')}`} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeDasharray="2 2" />
+                  )}
 
                   {/* Other Drivers */}
-                  {currentSample?.others && Object.entries(currentSample.others).map(([drId, pos]) => (
-                    <circle key={drId} cx={pos.x} cy={pos.y} r="1.5" fill="rgba(255,255,255,0.3)" style={{ transition: 'all 50ms linear' }} />
-                  ))}
+                  {currentSample?.others && Object.entries(currentSample.others).map(([drId, pos]) => {
+                    if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number' || isNaN(pos.x) || isNaN(pos.y)) return null;
+                    return <circle key={drId} cx={pos.x} cy={pos.y} r="1.5" fill="rgba(255,255,255,0.3)" style={{ transition: 'all 50ms linear' }} />;
+                  })}
 
                   {/* Animated Target Driver Dot */}
                   <circle cx={normalizedX} cy={normalizedY} r="3" fill="#3671C6" style={{ transition: 'all 50ms linear' }} />

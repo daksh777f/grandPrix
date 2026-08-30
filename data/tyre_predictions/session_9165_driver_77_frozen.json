@@ -1,0 +1,34 @@
+{
+  "session_key": 9165,
+  "driver_number": 77,
+  "validation_mode": "MID_STINT_HOLDOUT",
+  "is_multi_session": false,
+  "stints": {
+    "1": {
+      "compound": "HARD",
+      "split_lap": 17,
+      "train_laps_count": 16,
+      "holdout_laps_count": 17,
+      "frozen_predicted_wear_rate": 0.0112,
+      "frozen_predicted_interval": [
+        -0.0255,
+        0.048
+      ],
+      "frozen_predicted_cliff_lap": 42,
+      "confidence_at_freeze": "HIGH_CONFIDENCE"
+    },
+    "2": {
+      "compound": "MEDIUM",
+      "split_lap": 47,
+      "train_laps_count": 3,
+      "holdout_laps_count": 4,
+      "frozen_predicted_wear_rate": 0.0582,
+      "frozen_predicted_interval": [
+        -0.0011,
+        0.1175
+      ],
+      "frozen_predicted_cliff_lap": 70,
+      "confidence_at_freeze": "INSUFFICIENT_EVIDENCE"
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, ArrowUpRight, Clock, Mic, Pause, Play, Radio, 
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchVoiceIntelligence, type VoiceIntelligenceData, type VoiceIntelligenceMessage } from '@/lib/api';
+import { TyreVoiceMismatchChip } from '@/components/sections/TyreVoiceMismatchChip';
 import { cn } from '@/lib/utils';
 import WarpText from '@/components/ui/WarpText';
 
@@ -73,32 +74,48 @@ function liveContextHref(sessionKey: number, message: VoiceIntelligenceMessage) 
   return `/live?${params.toString()}`;
 }
 
-function VoiceSignal({ message }: { message: VoiceIntelligenceMessage }) {
+function VoiceSignal({ message, sessionKey = 9165 }: { message: VoiceIntelligenceMessage; sessionKey?: number }) {
   const voiceState = message.voice.voice_state.replace(/_/g, ' ');
   const emotion = message.voice.emotion ? message.voice.emotion.toUpperCase() : 'UNAVAILABLE';
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="rounded-xl border border-white/10 bg-[#111316] p-5">
-        <div className="flex items-center justify-between mb-4">
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">VOICE STATE</span>
-          <Activity className="w-4 h-4 text-accent-amber" />
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-white/10 bg-[#111316] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">VOICE STATE</span>
+            <Activity className="w-4 h-4 text-accent-amber" />
+          </div>
+          <div className="font-display text-2xl font-bold uppercase text-ink">{voiceState}</div>
+          <div className="font-mono text-[10px] text-ink-muted uppercase tracking-widest mt-2">
+            Vocal arousal {message.voice.vocal_arousal === null ? '--' : message.voice.vocal_arousal.toFixed(2)}
+          </div>
         </div>
-        <div className="font-display text-2xl font-bold uppercase text-ink">{voiceState}</div>
-        <div className="font-mono text-[10px] text-ink-muted uppercase tracking-widest mt-2">
-          Vocal arousal {message.voice.vocal_arousal === null ? '--' : message.voice.vocal_arousal.toFixed(2)}
+        <div className="rounded-xl border border-white/10 bg-[#111316] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">EMOTION LABEL</span>
+            <Volume2 className="w-4 h-4 text-chrome" />
+          </div>
+          <div className="font-display text-2xl font-bold uppercase text-ink">{emotion}</div>
+          <div className={cn('inline-flex mt-2 rounded-full border px-2 py-1 font-mono text-[9px] uppercase tracking-widest', statusClass(message.voice.status))}>
+            {message.voice.status}
+          </div>
         </div>
       </div>
-      <div className="rounded-xl border border-white/10 bg-[#111316] p-5">
-        <div className="flex items-center justify-between mb-4">
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">EMOTION LABEL</span>
-          <Volume2 className="w-4 h-4 text-chrome" />
-        </div>
-        <div className="font-display text-2xl font-bold uppercase text-ink">{emotion}</div>
-        <div className={cn('inline-flex mt-2 rounded-full border px-2 py-1 font-mono text-[9px] uppercase tracking-widest', statusClass(message.voice.status))}>
-          {message.voice.status}
-        </div>
-      </div>
+
+      {/* Cross-Modal Tyre Telemetry Alignment Badge */}
+      {message.voice_tyre_alignment && (
+        <TyreVoiceMismatchChip
+          alignment={message.voice_tyre_alignment}
+          description={message.voice_tyre_alignment_description}
+          wearRate={message.tyre_wear_rate}
+          cliffProbability={message.cliff_probability}
+          tyreHealthPct={message.tyre_health_pct}
+          lap={message.lap}
+          sessionKey={sessionKey}
+          driverNumber={message.driver_number}
+        />
+      )}
     </div>
   );
 }
@@ -206,10 +223,19 @@ function TimelineItem({ message, selected, onSelect }: { message: VoiceIntellige
       <div className={cn('font-display text-lg font-medium leading-snug', !message.transcript && 'text-ink-muted italic text-sm')}>
         {message.transcript ? `"${transcript}"` : transcript}
       </div>
-      <div className="flex items-center gap-2 mt-4 font-mono text-[9px] text-ink-muted uppercase tracking-widest">
-        <span>{message.voice.emotion ? message.voice.emotion : 'VOICE UNAVAILABLE'}</span>
-        <span className="text-chrome/30">·</span>
-        <span>{message.transcription_status}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-4 font-mono text-[9px] text-ink-muted uppercase tracking-widest">
+        <div className="flex items-center gap-2">
+          <span>{message.voice.emotion ? message.voice.emotion : 'VOICE UNAVAILABLE'}</span>
+          <span className="text-chrome/30">·</span>
+          <span>{message.transcription_status}</span>
+        </div>
+
+        {message.voice_tyre_alignment && (
+          <TyreVoiceMismatchChip
+            alignment={message.voice_tyre_alignment}
+            variant="compact"
+          />
+        )}
       </div>
     </button>
   );
@@ -355,7 +381,7 @@ export function VoicePage() {
                       View live context <ArrowUpRight className="w-3 h-3" />
                     </button>
                   </div>
-                  <div className="mb-8"><VoiceSignal message={selectedMsg} /></div>
+                  <div className="mb-8"><VoiceSignal message={selectedMsg} sessionKey={data?.session_key || 9165} /></div>
                   <div className="mb-10"><ContextGrid message={selectedMsg} /></div>
 
                   {selectedMsg.ai_interpretation && (

@@ -1,4 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+backend/**/__pycache__/
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Caches and temporary data
 data/radio_transcripts/
 data/voice_analysis/
 data/radio_audio/*.part
 *.tmp
+.DS_Store
+Thumbs.db

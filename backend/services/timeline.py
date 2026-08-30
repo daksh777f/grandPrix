@@ -6,6 +6,8 @@ from urllib.parse import urlencode
 
 from services.live_analysis import get_live_analysis
 from services.voice import get_voice_intelligence
+from services.tyre_state import get_driver_tyre_state
+from services.tyre_strategy import simulate_strategies
 
 
 ACTIONABLE_DIAGNOSES = {
@@ -117,17 +119,32 @@ def _voice_link(session_key: int, driver_number: int, event: dict[str, Any]) -> 
     return f"/voice?{urlencode(params)}"
 
 
+_timeline_cache: dict[tuple[int, int], dict[str, Any]] = {}
+
+
 def get_race_timeline(session_key: int, driver_number: int) -> dict[str, Any]:
+    cache_key = (session_key, driver_number)
+    if cache_key in _timeline_cache:
+        return _timeline_cache[cache_key]
+
     live_data = get_live_analysis(session_key, driver_number)
     voice_data = get_voice_intelligence(session_key, driver_number)
     samples = sorted(live_data.get("samples", []), key=lambda sample: sample.get("elapsed", 0))
     events: list[dict[str, Any]] = []
+
+    # Map earliest sample per lap for clean timeline temporal alignment
+    lap_start_samples: dict[int, dict[str, Any]] = {}
+    for s in samples:
+        l_num = s.get("lap_number")
+        if l_num is not None and l_num not in lap_start_samples:
+            lap_start_samples[l_num] = s
 
     last_section: tuple[Any, Any] | None = None
     last_diagnosis: tuple[Any, Any] | None = None
     last_gate_state: str | None = None
     last_race_state: tuple[Any, Any, Any] | None = None
     last_position_event: str | None = None
+    last_tyre_alert_lap: int | None = None
 
     for sample in samples:
         elapsed = float(sample.get("elapsed", 0))
@@ -137,6 +154,7 @@ def get_race_timeline(session_key: int, driver_number: int) -> dict[str, Any]:
         diagnosis = context["performance"].get("diagnosis")
         race = context.get("race_context", {})
         communication = context.get("communication") or {}
+        current_lap = context.get("lap")
 
         section_key = (corner, phase)
         if corner and corner != "Straight" and section_key != last_section:
@@ -224,8 +242,27 @@ def get_race_timeline(session_key: int, driver_number: int) -> dict[str, Any]:
                 }
                 co_driver_event["links"] = {"live": _live_link(session_key, driver_number, co_driver_event)}
                 events.append(co_driver_event)
+
+                # Check if this escalation was triggered by TYRE_ALERT
+                if (communication.get("category") == "TYRE_ALERT" or sample.get("tyre_alert_active")) and current_lap != last_tyre_alert_lap:
+                    tyre_alert_event = _base_event(
+                        "TYRE_ALERT_ESCALATION",
+                        elapsed,
+                        context,
+                        "TYRE ALERT ESCALATION",
+                        "Communication gate escalated to RADIO_NOW due to critical tyre degradation threshold",
+                        f"tyre_alert|{current_lap}|{corner}",
+                    )
+                    tyre_alert_event["links"] = {
+                        "live": _live_link(session_key, driver_number, tyre_alert_event),
+                        "tyre": f"/tyres?session={session_key}&driver={driver_number}&lap={current_lap}",
+                    }
+                    events.append(tyre_alert_event)
+                    last_tyre_alert_lap = current_lap
+
         last_gate_state = gate_state
 
+    # 1. Weave in Voice Radio Transmissions
     for radio in voice_data.get("messages", []):
         if radio.get("elapsed") is None:
             continue
@@ -249,14 +286,98 @@ def get_race_timeline(session_key: int, driver_number: int) -> dict[str, Any]:
                 "voice_state": radio.get("voice", {}).get("voice_state"),
                 "emotion": radio.get("voice", {}).get("emotion"),
             },
-            "links": {"live": _live_link(session_key, driver_number, radio), "voice": _voice_link(session_key, driver_number, radio)},
+            "links": {
+                "live": _live_link(session_key, driver_number, radio),
+                "voice": _voice_link(session_key, driver_number, radio),
+                "tyre": f"/tyres?session={session_key}&driver={driver_number}" + (f"&lap={radio['lap']}" if radio.get("lap") else ""),
+            },
         }
         events.append(radio_event)
 
-    kind_order = {"TELEMETRY": 0, "RADIO": 1, "RACE_CONTEXT": 2, "COMMUNICATION": 3, "CO_DRIVER": 4}
+    # 2. Weave in First-Class Tyre Degradation Events (Cliff Onset & Pit Window)
+    try:
+        tyre_state = get_driver_tyre_state(session_key, driver_number)
+        records = tyre_state.get("records", [])
+
+        # Find first cliff lap per stint (e.g. cliff_probability >= 0.50 or cliff_detected)
+        cliff_laps_found: set[int] = set()
+        stints_processed: set[int] = set()
+
+        for rec in records:
+            stint_num = rec.get("stint_number", 1)
+            cliff_prob = rec.get("cliff_probability", 0.0)
+            cliff_det = rec.get("cliff_detected", False)
+            lap_num = rec.get("lap_number")
+
+            if stint_num not in stints_processed and (cliff_det or cliff_prob >= 0.50) and lap_num is not None:
+                stints_processed.add(stint_num)
+                cliff_laps_found.add(lap_num)
+
+                sample_ref = lap_start_samples.get(lap_num) or (samples[0] if samples else {})
+                t_elapsed = float(sample_ref.get("elapsed", 0))
+                t_ctx = _context_from_sample(sample_ref)
+
+                cliff_ev = _base_event(
+                    "TYRE_CLIFF_ONSET",
+                    t_elapsed,
+                    t_ctx,
+                    "TYRE CLIFF ONSET",
+                    f"Stint {stint_num} ({rec.get('compound', 'TYRE')}) reached degradation cliff inflection (wear rate +{rec.get('wear_rate_estimate', 0):.3f}s/lap, cliff risk {int(cliff_prob * 100)}%)",
+                    f"cliff|stint{stint_num}|lap{lap_num}",
+                )
+                cliff_ev["links"] = {
+                    "live": _live_link(session_key, driver_number, cliff_ev),
+                    "tyre": f"/tyres?session={session_key}&driver={driver_number}&lap={lap_num}",
+                }
+                events.append(cliff_ev)
+
+        # 3. Weave in Nominal Pit Window Opened Event
+        try:
+            strat = simulate_strategies(session_key, driver_number, current_lap=38)
+            scenarios = strat.get("scenarios", [])
+            nominal = next((s for s in scenarios if s.get("name") == "Nominal"), None)
+            if nominal:
+                pit_lap = nominal.get("pit_lap", 41)
+                window_lap = max(1, pit_lap - 2)
+                sample_ref = lap_start_samples.get(window_lap) or (samples[0] if samples else {})
+                t_elapsed = float(sample_ref.get("elapsed", 0))
+                t_ctx = _context_from_sample(sample_ref)
+
+                pit_ev = _base_event(
+                    "PIT_WINDOW_OPENED",
+                    t_elapsed,
+                    t_ctx,
+                    "PIT WINDOW OPENED",
+                    f"Optimal pit window opened for Stint 1 ({strat.get('current_compound', 'HARD')}) · Target Box: Lap {pit_lap} for {nominal.get('new_compound', 'MEDIUM')} tyres",
+                    f"pit_window|lap{window_lap}",
+                )
+                pit_ev["links"] = {
+                    "live": _live_link(session_key, driver_number, pit_ev),
+                    "tyre": f"/tyres?session={session_key}&driver={driver_number}&lap={pit_lap}",
+                }
+                events.append(pit_ev)
+        except Exception as pit_err:
+            print("Pit window calculation skipped:", pit_err)
+
+    except Exception as tyre_err:
+        print("Tyre timeline event generation error:", tyre_err)
+
+    kind_order = {
+        "TELEMETRY": 0,
+        "RADIO": 1,
+        "RACE_CONTEXT": 2,
+        "COMMUNICATION": 3,
+        "CO_DRIVER": 4,
+        "PIT_WINDOW_OPENED": 5,
+        "TYRE_CLIFF_ONSET": 6,
+        "TYRE_ALERT_ESCALATION": 7,
+    }
     events.sort(key=lambda event: (event["elapsed"], kind_order.get(event["kind"], 99)))
-    return {
+    result = {
         "session_key": session_key,
         "driver_number": driver_number,
         "events": events,
     }
+    _timeline_cache[cache_key] = result
+    return result
+

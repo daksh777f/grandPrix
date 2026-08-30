@@ -1,25 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Map as MapIcon, ArrowUpRight, ArrowDownRight, RefreshCcw, Cpu } from 'lucide-react';
-import { fetchCompletedComparisonLaps, fetchDefaultBenchmark, fetchGrid, fetchLiveAnalysis, fetchRecentComparisons, fetchVoiceIntelligence, type Driver, type LiveAnalysisData, type RecentLapComparisons, type VoiceIntelligenceMessage } from '@/lib/api';
+import { fetchCompletedComparisonLaps, fetchDefaultBenchmark, fetchGrid, fetchLiveAnalysis, fetchRecentComparisons, type Driver, type LiveAnalysisData, type RecentLapComparisons } from '@/lib/api';
+import { fetchTyreIntelligence, type TyreIntelligenceData } from '@/lib/tyreApi';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { CornerHistoryPanel } from '@/components/sections/CornerHistoryPanel';
 import { LapCoachingPanel } from '@/components/sections/LapCoachingPanel';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-
-function voiceContextHref(sessionKey: number, message: VoiceIntelligenceMessage) {
-  const params = new URLSearchParams({
-    session: String(sessionKey),
-    driver: String(message.driver_number),
-    event_id: message.event_id,
-    timestamp: message.timestamp,
-  });
-  if (message.lap !== null) params.set('lap', String(message.lap));
-  if (message.corner) params.set('corner', message.corner);
-  if (message.progress !== null) params.set('progress', message.progress.toFixed(6));
-  if (message.elapsed !== null) params.set('elapsed', message.elapsed.toFixed(3));
-  return `/voice?${params.toString()}`;
-}
+import { TyreHealthHUD } from '@/components/sections/TyreHealthHUD';
+import { useSearchParams } from 'react-router-dom';
 
 interface CoDriverFinding {
   eventId: string;
@@ -37,23 +25,10 @@ interface CoDriverFinding {
   benchmarkDriver: number | null;
 }
 
-function formatRaceTime(elapsed: number) {
-  const totalSeconds = Math.max(0, elapsed);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
-  return `${minutes}:${seconds}`;
-}
-
-function formatFindingDelta(value: number | null) {
-  if (value === null) return '--';
-  return `${value > 0 ? '+' : ''}${value.toFixed(3)}s`;
-}
-
 export function LiveIntelligencePage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [liveData, setLiveData] = useState<LiveAnalysisData | null>(null);
-  const [voiceMessages, setVoiceMessages] = useState<VoiceIntelligenceMessage[]>([]);
+  const [tyreData, setTyreData] = useState<TyreIntelligenceData | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [targetDriver, setTargetDriver] = useState(1);
@@ -64,7 +39,7 @@ export function LiveIntelligencePage() {
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [coachingError, setCoachingError] = useState<string | null>(null);
   const [latestFinding, setLatestFinding] = useState<CoDriverFinding | null>(null);
-  const [recentFindings, setRecentFindings] = useState<CoDriverFinding[]>([]);
+  const [_recentFindings, setRecentFindings] = useState<CoDriverFinding[]>([]);
   const lastFindingKeyRef = useRef<string | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [currentTick, setCurrentTick] = useState(0);
@@ -160,8 +135,15 @@ export function LiveIntelligencePage() {
     async function loadData() {
       try {
         setLiveError(null);
-        const data = await fetchLiveAnalysis(requestedContext.sessionKey, targetDriver);
+        const [data, tyreResult] = await Promise.all([
+          fetchLiveAnalysis(requestedContext.sessionKey, targetDriver),
+          fetchTyreIntelligence(requestedContext.sessionKey, targetDriver).catch((err) => {
+            console.warn("Tyre intelligence stream unavailable", err);
+            return null;
+          }),
+        ]);
         setLiveData(data);
+        setTyreData(tyreResult);
         const nextTick = Math.min(currentTickRef.current, Math.max(0, data.samples.length - 1));
         currentTickRef.current = nextTick;
         setCurrentTick(nextTick);
@@ -171,21 +153,6 @@ export function LiveIntelligencePage() {
       }
     }
     loadData();
-  }, [requestedContext.sessionKey, targetDriver]);
-
-  useEffect(() => {
-    let active = true;
-    fetchVoiceIntelligence(requestedContext.sessionKey, targetDriver)
-      .then((data) => {
-        if (active) setVoiceMessages(data.messages);
-      })
-      .catch((err) => {
-        console.warn('Radio context unavailable on live page', err);
-        if (active) setVoiceMessages([]);
-      });
-    return () => {
-      active = false;
-    };
   }, [requestedContext.sessionKey, targetDriver]);
 
   useEffect(() => {
@@ -294,7 +261,7 @@ export function LiveIntelligencePage() {
   useEffect(() => {
     const sample = currentSample;
     const communication = sample?.communication;
-    if (!sample || !communication || (communication.state !== 'ATTENTION' && communication.state !== 'RADIO_NOW')) return;
+    if (!sample || !communication || communication.state !== 'RADIO_NOW') return;
 
     const diagnosis = sample.analysis.diagnosis;
     const corner = sample.current_corner.name;
@@ -418,47 +385,67 @@ export function LiveIntelligencePage() {
   const benchmarkMeta = drivers.find((driver) => driver.driver_number === benchmarkDriver);
   const targetAcronym = targetMeta?.name_acronym || `#${targetDriver}`;
   const benchmarkAcronym = benchmarkMeta?.name_acronym || (benchmarkDriver ? `#${benchmarkDriver}` : '--');
-  const normalizedX = liveData ? (100 - safeSample.target.x) : 50;
-  const normalizedY = liveData ? safeSample.target.y : 50;
-
-  const ctx = safeSample.race_context || { position: 1, battle_active: false, is_defending: false, gap_behind: null, position_event: "NO_CHANGE" };
-  const position = ctx.position !== null ? ctx.position : "--";
-  const comm = safeSample.communication || { state: "MONITORING", should_speak: false, priority: null, reason: null, cooldown_remaining: 0 };
+  const targetX = (typeof safeSample?.target?.x === 'number' && !isNaN(safeSample.target.x)) ? safeSample.target.x : 50;
+  const targetY = (typeof safeSample?.target?.y === 'number' && !isNaN(safeSample.target.y)) ? safeSample.target.y : 50;
+  const normalizedX = 100 - targetX;
+  const normalizedY = targetY;
 
   const isStraight = safeSample.current_corner.name === "Straight";
-  const isGood = safeSample.analysis.diagnosis === "GOOD" || safeSample.analysis.diagnosis === "None";
+
+  const getLastCornerSample = () => {
+    if (!liveData || !liveData.samples || liveData.samples.length === 0) return null;
+    const startIdx = Math.min(currentTick, liveData.samples.length - 1);
+    for (let i = startIdx; i >= 0; i--) {
+      const s = liveData.samples[i];
+      if (s && s.current_corner && s.current_corner.name !== "Straight") {
+        return s;
+      }
+    }
+    return null;
+  };
+
+  const effectiveSample = (isStraight && safeSample.communication.state !== "RADIO_NOW") 
+    ? (getLastCornerSample() || safeSample) 
+    : safeSample;
+
+  const ctx = effectiveSample.race_context || { position: 1, battle_active: false, is_defending: false, gap_behind: null, position_event: "NO_CHANGE" };
+  const position = ctx.position !== null ? ctx.position : "--";
+  const comm = effectiveSample.communication || { state: "MONITORING", should_speak: false, priority: null, reason: null, cooldown_remaining: 0 };
+
+  const effectiveIsStraight = effectiveSample.current_corner.name === "Straight";
+  const effectiveIsGood = effectiveSample.analysis.diagnosis === "GOOD" || effectiveSample.analysis.diagnosis === "None";
 
   // Semantic overrides for straight
-  const displayDiagnosis = isStraight ? "CLEAR RUN" : (isGood ? "NO SIGNIFICANT DEFICIT" : safeSample.analysis.diagnosis.replace(/_/g, ' '));
-  const isActionable = !isStraight && !isGood && safeSample.analysis.diagnosis !== "None";
+  const displayDiagnosis = effectiveIsStraight ? "CLEAR RUN" : (effectiveIsGood ? "NO SIGNIFICANT DEFICIT" : effectiveSample.analysis.diagnosis.replace(/_/g, ' '));
+  const isActionable = !effectiveIsStraight && !effectiveIsGood && effectiveSample.analysis.diagnosis !== "None";
 
   // Contextual Metrics for Middle Area
   const getContextualMetrics = () => {
-    if (isStraight || isGood) return null;
+    if (effectiveIsStraight || effectiveIsGood) return null;
 
-    const diag = safeSample.analysis.diagnosis;
+    const diag = effectiveSample.analysis.diagnosis;
     if (diag === "EARLY_BRAKING") {
       return [
-        { label: "BRAKE POINT", val: `${Math.abs(safeSample.comparison.braking_delta)}m EARLY` },
-        { label: "ENTRY SPEED", val: `${safeSample.comparison.entry_speed_delta > 0 ? '+' : ''}${safeSample.comparison.entry_speed_delta} km/h` }
+        { label: "BRAKE POINT", val: `${Math.abs(effectiveSample.comparison.braking_delta)}m EARLY` },
+        { label: "ENTRY SPEED", val: `${effectiveSample.comparison.entry_speed_delta > 0 ? '+' : ''}${effectiveSample.comparison.entry_speed_delta} km/h` }
       ];
     }
     if (diag === "LATE_THROTTLE") {
       return [
-        { label: "THROTTLE DELAY", val: `+${safeSample.comparison.throttle_delay}s LATE` },
-        { label: "EXIT SPEED", val: `${safeSample.comparison.exit_speed_delta > 0 ? '+' : ''}${safeSample.comparison.exit_speed_delta} km/h` }
+        { label: "THROTTLE DELAY", val: `+${effectiveSample.comparison.throttle_delay}s LATE` },
+        { label: "EXIT SPEED", val: `${effectiveSample.comparison.exit_speed_delta > 0 ? '+' : ''}${effectiveSample.comparison.exit_speed_delta} km/h` }
       ];
     }
     if (diag === "LOW_MIN_SPEED") {
       return [
-        { label: "MIN SPEED", val: `${safeSample.comparison.minimum_speed_delta > 0 ? '+' : ''}${safeSample.comparison.minimum_speed_delta} km/h` },
-        { label: "EXIT SPEED", val: `${safeSample.comparison.exit_speed_delta > 0 ? '+' : ''}${safeSample.comparison.exit_speed_delta} km/h` }
+        { label: "MIN SPEED", val: `${effectiveSample.comparison.minimum_speed_delta > 0 ? '+' : ''}${effectiveSample.comparison.minimum_speed_delta} km/h` },
+        { label: "EXIT SPEED", val: `${effectiveSample.comparison.exit_speed_delta > 0 ? '+' : ''}${effectiveSample.comparison.exit_speed_delta} km/h` }
       ];
     }
     if (diag === "LOW_EXIT_SPEED") {
       return [
-        { label: "EXIT SPEED", val: `${safeSample.comparison.exit_speed_delta > 0 ? '+' : ''}${safeSample.comparison.exit_speed_delta} km/h` },
-        { label: "THROTTLE TIMING", val: `+${safeSample.comparison.throttle_delay}s` }
+        { label: "EXIT SPEED", val: `${effectiveSample.comparison.exit_speed_delta > 0 ? '+' : ''}${effectiveSample.comparison.exit_speed_delta} km/h` },
+        { label: "THROTTLE TIMING", val: `+${effectiveSample.comparison.throttle_delay}s` }
       ];
     }
     return null;
@@ -466,26 +453,13 @@ export function LiveIntelligencePage() {
 
   const metrics = getContextualMetrics();
 
-  const observationMessage = safeSample.analysis.message || "Monitoring telemetry.";
-  const instructionMessage = safeSample.analysis.advice || "Keep pushing.";
-  const isRadioNow = comm.state === "RADIO_NOW";
+  const observationMessage = effectiveSample.analysis.message || "Monitoring telemetry.";
+  const instructionMessage = effectiveSample.analysis.advice || "Keep pushing.";
 
-  const nearbyRadio = voiceMessages
-    .filter((message) => {
-      if (message.elapsed !== null) {
-        return Math.abs(message.elapsed - safeSample.elapsed) <= 5;
-      }
-      return message.lap === safeSample.lap_number && message.corner === safeSample.current_corner.name;
-    })
-    .sort((left, right) => {
-      if (left.elapsed !== null && right.elapsed !== null) {
-        return Math.abs(left.elapsed - safeSample.elapsed) - Math.abs(right.elapsed - safeSample.elapsed);
-      }
-      return 0;
-    })[0] || null;
+  const nearbyRadio = effectiveSample.voice_context || null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] pt-20 flex flex-col font-body text-ink">
+    <div className="min-h-screen bg-[#0a0a0c] pt-20 pb-32 flex flex-col font-body text-ink">
 
       {/* COMPACT TOP BAR */}
       <div className="w-full bg-[#111316] border-b border-chrome/10 px-6 py-2 flex flex-wrap items-center justify-between gap-y-2 shrink-0 fixed top-20 left-0 right-0 z-30">
@@ -628,7 +602,9 @@ export function LiveIntelligencePage() {
                  <svg viewBox="-10 -10 120 120" className="w-full h-full overflow-visible">
                   <path d={trackPath} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   {/* Optionally draw a closing line if start/finish line is separated */}
-                  <path d={`${trackPath.split(' ')[0]} ${trackPath.split(' ')[1]} ${trackPath.split(' ')[2]} L ${trackPath.split(' ').slice(-2).join(' ')}`} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeDasharray="2 2" />
+                  {trackPath.split(' ').length >= 3 && (
+                    <path d={`${trackPath.split(' ')[0]} ${trackPath.split(' ')[1]} ${trackPath.split(' ')[2]} L ${trackPath.split(' ').slice(-2).join(' ')}`} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeDasharray="2 2" />
+                  )}
 
                   {/* Corner Hitboxes */}
                   {cornerPaths.map(([cName, path]) => (
@@ -647,9 +623,19 @@ export function LiveIntelligencePage() {
                   ))}
 
                   {/* Other Drivers */}
-                  {safeSample.others && Object.entries(safeSample.others).map(([drId, pos]) => (
-                    <circle key={drId} cx={100 - pos.x} cy={pos.y} r="1.5" fill="rgba(255,255,255,0.3)" style={{ transition: 'all 50ms linear' }} />
-                  ))}
+                  {safeSample.others && Object.entries(safeSample.others).map(([drId, pos]) => {
+                    if (Number(drId) === benchmarkDriver) return null;
+                    if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number' || isNaN(pos.x) || isNaN(pos.y)) return null;
+                    return <circle key={drId} cx={100 - pos.x} cy={pos.y} r="1.5" fill="rgba(255,255,255,0.3)" style={{ transition: 'all 50ms linear' }} />;
+                  })}
+
+                  {/* Benchmark Driver (offset slightly since distance-aligned telemetry means X,Y matches exactly) */}
+                  {benchmarkDriver && benchmarkAcronym !== '--' && (
+                    <>
+                      <circle cx={normalizedX - 2.5} cy={normalizedY + 2.5} r="2.5" fill="#FFFFFF" style={{ transition: 'all 50ms linear' }} />
+                      <text x={normalizedX - 16} y={normalizedY + 4} className="font-mono text-[6px] font-bold" fill="#fff" style={{ transition: 'all 50ms linear' }}>{benchmarkAcronym}</text>
+                    </>
+                  )}
 
                   {/* Target Driver */}
                   <circle cx={normalizedX} cy={normalizedY} r="3" fill="#3671C6" style={{ transition: 'all 50ms linear' }} />
@@ -682,14 +668,14 @@ export function LiveIntelligencePage() {
 
             <AnimatePresence mode="wait">
               <motion.div
-                key={isStraight ? 'straight' : safeSample.analysis.diagnosis}
+                key={effectiveIsStraight ? 'straight' : effectiveSample.analysis.diagnosis}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 className="flex flex-col flex-1"
               >
-                {!isStraight && !isGood && metrics && (
+                {!effectiveIsStraight && !effectiveIsGood && metrics && (
                   <div className="grid grid-cols-2 gap-6 mb-6">
                     {metrics.map((m, i) => (
                       <div key={i} className="bg-[#0a0a0c] p-3 rounded border border-chrome/10">
@@ -700,7 +686,7 @@ export function LiveIntelligencePage() {
                   </div>
                 )}
 
-                {(!isStraight && !isGood && metrics) ? (
+                {(!effectiveIsStraight && !effectiveIsGood && metrics) ? (
                   <div className="mt-auto">
                     <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-2">TELEMETRY MATCH</div>
                     <div className="font-mono text-xs text-brand-red">EVIDENCE SUPPORTS DIAGNOSIS</div>
@@ -708,7 +694,7 @@ export function LiveIntelligencePage() {
                 ) : (
                   <div className="mt-auto flex items-center justify-center h-full">
                      <span className="font-mono text-xs text-chrome/40 uppercase tracking-widest">
-                       {isStraight ? "WAITING FOR CORNER..." : "AWAITING ACTIONABLE DATA"}
+                       {effectiveIsStraight ? "WAITING FOR CORNER..." : "AWAITING ACTIONABLE DATA"}
                      </span>
                   </div>
                 )}
@@ -718,31 +704,8 @@ export function LiveIntelligencePage() {
 
           {/* COLUMN 3: CO-DRIVER BRIEFING */}
            <div className="bg-[#111316] border border-chrome/10 rounded p-5 flex flex-col relative overflow-hidden">
-             {/* The flashing header is removed as requested by the user, we will just tint the border instead */}
 
-             {nearbyRadio && (
-               <div className="mb-6 rounded border border-brand-red/20 bg-brand-red/5 p-3">
-                 <div className="flex items-center justify-between gap-3 mb-2">
-                   <div className="font-mono text-[9px] text-brand-red uppercase tracking-[0.2em]">RADIO · {nearbyRadio.lap ? `L${nearbyRadio.lap}` : 'L--'}</div>
-                   <span className="font-mono text-[9px] text-chrome/50 uppercase">{nearbyRadio.corner || 'NO CORNER'}</span>
-                 </div>
-                 <div className="font-body text-sm text-white/80 leading-snug mb-3">
-                   {nearbyRadio.transcript ? `"${nearbyRadio.transcript}"` : 'Transcript unavailable'}
-                 </div>
-                 <div className="flex items-center justify-between gap-3">
-                   <span className="font-mono text-[9px] text-chrome/50 uppercase tracking-widest">VOICE STATE · {nearbyRadio.voice.voice_state.replace(/_/g, ' ')}</span>
-                   <button
-                     type="button"
-                     onClick={() => navigate(voiceContextHref(requestedContext.sessionKey, nearbyRadio))}
-                     className="inline-flex items-center gap-1 text-chrome/70 hover:text-ink font-mono text-[9px] uppercase tracking-widest transition-colors"
-                   >
-                     View transmission <ArrowUpRight className="w-3 h-3" />
-                   </button>
-                 </div>
-               </div>
-             )}
-
-              <div className="flex items-start justify-between mb-8">
+             <div className="flex items-start justify-between mb-8">
                <div className={cn(
                 "font-mono text-[9px] uppercase tracking-[0.2em] flex items-center gap-1.5 transition-colors",
                 comm.state === "RADIO_NOW" ? "text-brand-red font-bold" : (comm.state === "ATTENTION" ? "text-amber-400" : "text-chrome/50")
@@ -760,47 +723,58 @@ export function LiveIntelligencePage() {
              <AnimatePresence mode="wait">
               <motion.div
                 key={comm.state + displayDiagnosis}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                initial={{ opacity: 0, y: comm.state === "RADIO_NOW" ? 5 : 0 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: comm.state === "RADIO_NOW" ? -5 : 0 }}
                 transition={{ duration: 0.2 }}
-                 className="flex flex-col"
+                 className={cn("flex flex-col", comm.state === "RADIO_NOW" && "border-l-2 border-brand-red/50 pl-3")}
                >
                {comm.state === "MONITORING" ? (
                    <div className="flex flex-col items-center justify-center py-8 text-center">
                      <div className="font-display text-2xl font-bold uppercase text-chrome/40 mb-2">MONITORING</div>
-                     <div className="font-mono text-xs text-chrome/30 uppercase tracking-widest">No instruction required</div>
-                  </div>
+                     <div className="font-mono text-xs text-chrome/30 uppercase tracking-widest mb-4">No instruction required</div>
+                     {latestFinding && (
+                       <div className="font-mono text-[10px] text-chrome/50 uppercase tracking-widest border border-chrome/10 rounded px-3 py-1 bg-white/[0.02]">
+                         Last instruction · {latestFinding.corner} · {Math.max(0, Math.round(safeSample.elapsed - latestFinding.elapsed))}s ago
+                       </div>
+                     )}
+                   </div>
+                ) : comm.state === "ATTENTION" ? (
+                    <div className="flex flex-col py-6">
+                      <div className="font-display text-2xl font-bold uppercase text-amber-400 mb-2">ATTENTION</div>
+                      <div className="font-mono text-xs text-amber-400 uppercase tracking-widest">{effectiveSample.current_corner.name} · {effectiveSample.analysis.diagnosis.replace(/_/g, ' ')}</div>
+                    </div>
                 ) : (
                   <>
                     {/* ISSUE */}
                     <div className="mb-6">
                       <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-1">THE ISSUE</div>
                       <div className={cn(
-                        "font-display text-3xl font-bold uppercase tracking-tight",
-                        isRadioNow ? "text-brand-red" : "text-amber-400"
+                        "font-display text-3xl font-bold uppercase tracking-tight text-brand-red"
                       )}>
-                        {displayDiagnosis}
+                        {effectiveIsStraight && ctx.battle_active ? "STRATEGIC RACE CONTEXT" : displayDiagnosis}
                       </div>
-                      <div className="font-mono text-[10px] text-chrome/60 uppercase tracking-widest mt-1">
-                        {safeSample.current_corner.name} · {safeSample.current_corner.phase}
-                      </div>
+                      {!effectiveIsStraight && (
+                        <div className="font-mono text-[10px] text-chrome/60 uppercase tracking-widest mt-1">
+                          {effectiveSample.current_corner.name} · {effectiveSample.current_corner.phase}
+                        </div>
+                      )}
                     </div>
 
                     {/* COST & RACE CONTEXT ROW */}
                     <div className="flex flex-wrap gap-8 mb-6 pb-6 border-b border-chrome/10">
                       {/* COST */}
-                      {isActionable && (
+                      {isActionable && !effectiveIsStraight && (
                         <div>
                           <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-2">THE COST</div>
-                          {safeSample.analysis.confidence < 0.5 ? (
+                          {effectiveSample.analysis.confidence < 0.5 ? (
                             <div className="font-mono text-sm text-chrome/50 font-bold uppercase tracking-widest">UNRESOLVED</div>
                           ) : (
                             <div>
-                              <div className={cn("font-numeric text-4xl font-bold leading-none", isRadioNow ? "text-brand-red" : "text-amber-400")}>
-                                +{safeSample.analysis.estimated_time_delta?.toFixed(3)}s
+                              <div className="font-numeric text-4xl font-bold leading-none text-brand-red">
+                                +{effectiveSample.analysis.estimated_time_delta?.toFixed(3)}s
                               </div>
-                              <div className={cn("font-mono text-[9px] uppercase tracking-[0.2em] mt-1 font-bold", isRadioNow ? "text-brand-red/80" : "text-amber-400/80")}>TIME LOST</div>
+                              <div className="font-mono text-[9px] uppercase tracking-[0.2em] mt-1 font-bold text-brand-red/80">TIME LOST</div>
                             </div>
                           )}
                         </div>
@@ -811,7 +785,7 @@ export function LiveIntelligencePage() {
                         <div>
                           <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-2">RACE CONTEXT</div>
                           <div className="flex flex-col gap-1">
-                            <div className={cn("font-mono text-[10px] font-bold uppercase tracking-[0.2em] border px-2 py-1 rounded-sm w-max", isRadioNow ? "border-brand-red/20 bg-brand-red/10 text-brand-red" : "border-amber-400/20 bg-amber-400/10 text-amber-400")}>
+                            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] border px-2 py-1 rounded-sm w-max border-brand-red/20 bg-brand-red/10 text-brand-red">
                               {ctx.is_defending ? "DEFENDING" : "ATTACKING"} · {ctx.gap_behind}s {ctx.is_defending ? "BEHIND" : "AHEAD"}
                             </div>
                             <div className="font-mono text-[10px] text-chrome/80 uppercase tracking-widest">
@@ -823,114 +797,90 @@ export function LiveIntelligencePage() {
                     </div>
 
                     {/* RADIO PROMPTER */}
-                    {isRadioNow && (
-                      <div className="mt-auto">
-                        <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-4">RADIO PROMPTER</div>
-                        <div className="flex flex-col gap-5">
-                          <div>
-                            <div className="font-mono text-[9px] text-chrome/40 uppercase tracking-widest mb-1">OBSERVATION:</div>
-                            <div className="font-body text-white/80 text-lg leading-snug">
-                              "{observationMessage}"
-                            </div>
-                          </div>
-                          <div>
-                            <div className="font-mono text-[9px] text-brand-red/80 font-bold uppercase tracking-widest mb-1">INSTRUCTION:</div>
-                            <div className="font-body text-xl font-bold text-white leading-tight border-l-2 border-brand-red/50 pl-3 py-1">
-                              "{instructionMessage}"
-                            </div>
+                    <div className="mt-auto">
+                      <div className="font-mono text-[9px] text-chrome/50 uppercase tracking-[0.2em] mb-4">RADIO PROMPTER</div>
+                      <div className="flex flex-col gap-5">
+                        <div>
+                          <div className="font-mono text-[9px] text-chrome/40 uppercase tracking-widest mb-1">OBSERVATION:</div>
+                          <div className="font-body text-white/80 text-lg leading-snug">
+                            "{observationMessage}"
                           </div>
                         </div>
+                        <div>
+                          <div className="font-mono text-[9px] text-brand-red/80 font-bold uppercase tracking-widest mb-1">INSTRUCTION:</div>
+                          <div className="font-body text-xl font-bold text-white leading-tight">
+                            "{instructionMessage}"
+                          </div>
+                        </div>
+                        {nearbyRadio && (
+                          <div className="pt-4 border-t border-chrome/10">
+                            <div className="font-mono text-[9px] text-chrome/40 uppercase tracking-widest mb-1">RECENT RADIO:</div>
+                            <div className="font-body text-sm text-chrome/70 italic">
+                              "{nearbyRadio.transcript}"
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </>
                 )}
               </motion.div>
              </AnimatePresence>
 
-             <div className="mt-auto border-t border-chrome/10 pt-5">
-               {latestFinding ? (
-                 <>
-                   <div className={cn("font-mono text-[9px] uppercase tracking-[0.2em] mb-3", latestFinding.communicationState === "RADIO_NOW" ? "text-brand-red" : "text-chrome/50")}>
-                     {latestFinding.communicationState === "RADIO_NOW" ? "LATEST CO-DRIVER CALL" : "LATEST CO-DRIVER FINDING"}
-                   </div>
-                   <button
-                     type="button"
-                     onClick={() => latestFinding.corner !== "Straight" && setSelectedCorner(latestFinding.corner)}
-                     className="w-full text-left rounded border border-chrome/10 bg-white/[0.03] p-3 transition-colors hover:border-chrome/30"
-                   >
-                     <div className="flex items-center justify-between gap-3">
-                       <span className="font-display text-xl font-bold uppercase text-ink">{latestFinding.corner} · {latestFinding.diagnosis.replace(/_/g, ' ')}</span>
-                       <span className={cn("font-mono text-[10px]", latestFinding.communicationState === "RADIO_NOW" ? "text-brand-red" : "text-amber-400")}>{formatFindingDelta(latestFinding.estimatedTimeDelta)}</span>
-                     </div>
-                     <div className="mt-1 font-mono text-[9px] uppercase tracking-widest text-chrome/50">LAP {latestFinding.lap} · {formatRaceTime(latestFinding.elapsed)} · {latestFinding.phase}</div>
-                     <div className="mt-3 font-body text-sm leading-snug text-white/80">"{latestFinding.message}"</div>
-                     <div className="mt-3 border-l-2 border-brand-red/50 pl-3 font-body text-sm font-bold leading-snug text-ink">{latestFinding.advice}</div>
-                   </button>
-                   {recentFindings.length > 1 && (
-                     <div className="mt-4">
-                       <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-chrome/40 mb-2">RECENT FINDINGS</div>
-                       <div className="space-y-1">
-                         {recentFindings.slice(1).map((finding) => (
-                           <button key={finding.eventId} type="button" onClick={() => finding.corner !== "Straight" && setSelectedCorner(finding.corner)} className="flex w-full items-center justify-between gap-3 text-left font-mono text-[9px] uppercase tracking-widest text-chrome/70 hover:text-ink">
-                             <span>{finding.corner} · {finding.diagnosis.replace(/_/g, ' ')}</span>
-                             <span className={finding.communicationState === "RADIO_NOW" ? "text-brand-red" : "text-amber-400"}>{formatFindingDelta(finding.estimatedTimeDelta)}</span>
-                           </button>
-                         ))}
-                       </div>
-                     </div>
-                   )}
-                 </>
-               ) : (
-                 <div className="py-5 text-center">
-                   <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-chrome/40">LATEST CO-DRIVER FINDING</div>
-                   <div className="mt-2 font-mono text-[10px] uppercase tracking-widest text-chrome/30">No meaningful event recorded yet</div>
-                 </div>
-               )}
-             </div>
+
 
            </div>
 
         </div>
       </div>
 
-      {/* BOTTOM: TELEMETRY STRIP */}
-      <div className="w-full bg-[#070709] border-t border-chrome/10 py-2.5 px-6 fixed bottom-0 left-0 right-0 z-30">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between font-mono text-[10px] text-chrome/50 uppercase tracking-widest">
-          <div className="flex gap-6">
-            <div className="flex items-center gap-2">
-              <span>SPD</span>
-              <span className="text-ink font-bold">{safeSample.target.speed}</span>
+      {/* BOTTOM DOCKED STRIP: TYRE HEALTH HUD & TELEMETRY GAUGES */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 flex flex-col shadow-[0_-8px_24px_rgba(0,0,0,0.6)]">
+        <TyreHealthHUD
+          sample={safeSample}
+          currentLap={typeof lapNum === 'number' ? lapNum : Number(safeSample.lap_number || 1)}
+          tyreData={tyreData}
+        />
+
+        {/* TELEMETRY STRIP */}
+        <div className="w-full bg-[#070709] border-t border-chrome/10 py-2 px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between font-mono text-[10px] text-chrome/50 uppercase tracking-widest gap-2">
+            <div className="flex gap-4 sm:gap-6">
+              <div className="flex items-center gap-2">
+                <span>SPD</span>
+                <span className="text-ink font-bold">{safeSample.target.speed}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span>GEAR</span>
+                <span className="text-ink font-bold">{safeSample.target.gear}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span>THR</span>
+                <span className="text-ink font-bold">{safeSample.target.throttle}%</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span>BRK</span>
+                <span className="text-ink font-bold">{safeSample.target.brake}%</span>
+              </div>
+              <div className="hidden sm:flex items-center gap-2">
+                <span>RPM</span>
+                <span className="text-ink font-bold">{(() => {
+                  const speed = safeSample.target.speed || 0;
+                  const gear = safeSample.target.gear || 1;
+                  const rpm = Math.min(15000, Math.max(4000, Math.round(speed * 45 + gear * 800)));
+                  return rpm >= 1000 ? `${(rpm / 1000).toFixed(1)}K` : rpm;
+                })()}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span>GEAR</span>
-              <span className="text-ink font-bold">{safeSample.target.gear}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span>THR</span>
-              <span className="text-ink font-bold">{safeSample.target.throttle}%</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span>BRK</span>
-              <span className="text-ink font-bold">{safeSample.target.brake}%</span>
-            </div>
-            <div className="hidden sm:flex items-center gap-2">
-              <span>RPM</span>
-              <span className="text-ink font-bold">{(() => {
-                const speed = safeSample.target.speed || 0;
-                const gear = safeSample.target.gear || 1;
-                const rpm = Math.min(15000, Math.max(4000, Math.round(speed * 45 + gear * 800)));
-                return rpm >= 1000 ? `${(rpm / 1000).toFixed(1)}K` : rpm;
-              })()}</span>
-            </div>
-          </div>
-          <div className="hidden md:flex gap-6">
-             <div className="flex items-center gap-2">
-              <span>LAP</span>
-              <span className="text-ink font-bold">{lapNum}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span>PROGRESS</span>
-              <span className="text-ink font-bold">{(safeSample.progress * 100).toFixed(1)}%</span>
+            <div className="hidden md:flex gap-6">
+              <div className="flex items-center gap-2">
+                <span>LAP</span>
+                <span className="text-ink font-bold">{lapNum}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span>PROGRESS</span>
+                <span className="text-ink font-bold">{(safeSample.progress * 100).toFixed(1)}%</span>
+              </div>
             </div>
           </div>
         </div>

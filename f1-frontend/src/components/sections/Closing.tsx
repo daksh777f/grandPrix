@@ -13,8 +13,7 @@ export function Closing() {
             loop
             playsInline
             className="w-full h-full object-cover opacity-60"
-            src="https://videos.pexels.com/video-files/856148/856148-hd_1920_1080_30fps.mp4"
-            // Fallback stock video; swap with track-video_2 when available
+            src="/F1.mp4"
           />
         </div>
 
@@ -37,3 +36,4 @@ export function Closing() {
     </>
   );
 }
+

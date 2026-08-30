@@ -8,6 +8,21 @@ export interface Driver {
   country_code: string;
 }
 
+export interface VoiceContext {
+  available: boolean;
+  event_id: string;
+  timestamp: string;
+  elapsed: number;
+  lap: number;
+  corner: string | null;
+  phase: string | null;
+  progress: number | null;
+  transcript: string | null;
+  voice_state: string | null;
+  vocal_arousal: number | null;
+  emotion: string | null;
+}
+
 export interface VoiceIntelligenceMessage {
   event_id: string;
   timestamp: string;
@@ -61,6 +76,11 @@ export interface VoiceIntelligenceMessage {
     advice: string;
     status: string;
   } | null;
+  tyre_wear_rate?: number;
+  cliff_probability?: number;
+  tyre_health_pct?: number;
+  voice_tyre_alignment?: "CONFIRMED" | "MISMATCH";
+  voice_tyre_alignment_description?: string;
 }
 
 export interface VoiceIntelligenceData {
@@ -148,9 +168,14 @@ export interface LiveAnalysisSample {
     state: "MONITORING" | "ATTENTION" | "RADIO_NOW";
     should_speak: boolean;
     priority: string | null;
+    category?: string | null;
     reason: string | null;
     cooldown_remaining: number;
   };
+  voice_context?: VoiceContext | null;
+  tyre_wear_rate?: number;
+  cliff_probability?: number;
+  tyre_alert_active?: boolean;
 }
 
 export interface LiveAnalysisData {
@@ -269,7 +294,15 @@ export async function fetchVoiceIntelligence(sessionKey: number, driverNumber: n
 
 export interface RaceTimelineEvent {
   event_id: string;
-  kind: 'TELEMETRY' | 'RADIO' | 'RACE_CONTEXT' | 'COMMUNICATION' | 'CO_DRIVER';
+  kind:
+    | 'TELEMETRY'
+    | 'RADIO'
+    | 'RACE_CONTEXT'
+    | 'COMMUNICATION'
+    | 'CO_DRIVER'
+    | 'TYRE_CLIFF_ONSET'
+    | 'TYRE_ALERT_ESCALATION'
+    | 'PIT_WINDOW_OPENED';
   elapsed: number;
   timecode: string;
   timestamp: string | null;
@@ -305,6 +338,7 @@ export interface RaceTimelineEvent {
   links: {
     live?: string;
     voice?: string;
+    tyre?: string;
   };
 }
 

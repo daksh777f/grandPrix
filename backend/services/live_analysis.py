@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from data.singapore_2023_track import CORNERS
 from services.race_engineer import generate_race_engineer_advice
 from services.race_context import get_race_context
+from services.tyre_state import get_driver_tyre_state
 
 LLM_CACHE_FILE = os.path.join(os.path.dirname(__file__), "llm_cache.json")
 llm_cache_global = {}
@@ -83,6 +84,209 @@ def calculate_progress(lap_df):
     return lap_df
 
 
+def _sanitize_straight_analysis(result):
+    """Prevent corner findings from leaking into straight sections."""
+    for sample in result.get("samples", []):
+        if sample.get("current_corner", {}).get("name") == "Straight":
+            sample["analysis"] = {
+                "diagnosis": "NONE",
+                "severity": "low",
+                "estimated_time_delta": None,
+                "confidence": None,
+                "message": "No corner diagnosis in this section.",
+                "advice": "No driver instruction required.",
+            }
+    return result
+
+
+def _apply_communication_gate(all_samples: list, session_key: int, target_driver: int) -> list:
+    """
+    Apply multi-modal communication gate across all samples, enforcing persistence,
+    cooldowns, and routing for driving, strategic, and TYRE_ALERT events.
+    """
+    MIN_RADIO_CONFIDENCE = 0.80
+    MIN_RADIO_TIME_LOSS = 0.10
+    HIGH_SEVERITY_TIME_LOSS = 0.20
+    MIN_RADIO_PERSISTENCE = 2  # consecutive laps
+    RADIO_COOLDOWN_SECONDS = 20
+    MATERIAL_WORSENING_DELTA = 0.10
+
+    corner_history = {} # corner_diagnosis -> { "last_lap": lap, "consecutive_laps": N }
+    dedup_last_communicated_loss = {} # corner_diagnosis -> last communicated time loss
+    cooldowns = {} # corner_diagnosis -> next_allowed_time
+    llm_cache = llm_cache_global
+
+    active_radio_event = None
+
+    # Pre-fetch latent tyre state and cliff detection data
+    tyre_state_data = {}
+    try:
+        tyre_state_data = get_driver_tyre_state(session_key, target_driver)
+    except Exception as e:
+        print(f"Tyre state retrieval error: {e}")
+    tyre_lap_lookup = tyre_state_data.get("lap_lookup", {})
+    tyre_stints_meta = tyre_state_data.get("stints", {})
+
+    for sample in all_samples:
+        elapsed = sample["elapsed"]
+        lap = sample["lap_number"]
+        corner = sample.get("current_corner", {}).get("name", "Straight")
+        analysis = sample["analysis"]
+        diag = analysis.get("diagnosis", "GOOD")
+        time_loss = analysis.get("estimated_time_delta", 0)
+        confidence = analysis.get("confidence", 1.0)
+
+        # Check tyre degradation and cliff risk
+        tyre_rec = tyre_lap_lookup.get(lap)
+        cliff_prob = tyre_rec.get("cliff_probability", 0.0) if tyre_rec else 0.0
+        tyre_conf = tyre_rec.get("confidence", "INSUFFICIENT_EVIDENCE") if tyre_rec else "INSUFFICIENT_EVIDENCE"
+        wear_rate = tyre_rec.get("wear_rate_estimate", 0.0) if tyre_rec else 0.0
+        stint_num = tyre_rec.get("stint_number", 1) if tyre_rec else 1
+
+        baseline_wear = 0.035
+        if stint_num in tyre_stints_meta:
+            baseline_wear = tyre_stints_meta[stint_num].get("baseline_wear_rate", 0.035)
+
+        is_tyre_alert_condition = bool(
+            (cliff_prob >= 0.50) or
+            (tyre_conf == "HIGH_CONFIDENCE" and wear_rate >= 2.0 * baseline_wear)
+        )
+
+        # Attach real-time tyre telemetry to sample for shared-clock HUD rendering
+        sample["tyre_wear_rate"] = round(wear_rate, 4)
+        sample["cliff_probability"] = round(cliff_prob, 3)
+        sample["tyre_alert_active"] = is_tyre_alert_condition
+
+        dedup_key = f"TYRE_ALERT_stint_{stint_num}" if is_tyre_alert_condition else f"{corner}_{diag}"
+
+        comm = {
+            "state": "MONITORING",
+            "should_speak": False,
+            "priority": None,
+            "category": "TYRE_ALERT" if is_tyre_alert_condition else "DRIVING",
+            "reason": None,
+            "cooldown_remaining": max(0, cooldowns.get(dedup_key, 0) - elapsed)
+        }
+
+        race_ctx = sample.get("race_context", {})
+        has_race_event = race_ctx.get("battle_active", False) or race_ctx.get("position_event", "NO_CHANGE") != "NO_CHANGE"
+
+        if not is_tyre_alert_condition and (diag in {"GOOD", "None", "NONE"} or corner == "Straight") and not has_race_event:
+            sample["communication"] = comm
+            active_radio_event = None
+            continue
+
+        comm["state"] = "ATTENTION"
+
+        # Track persistence by lap
+        hist = corner_history.get(dedup_key, {"last_lap": 0, "consecutive_laps": 0})
+        if hist["last_lap"] != lap:
+            if hist["last_lap"] == lap - 1:
+                hist["consecutive_laps"] += 1
+            else:
+                hist["consecutive_laps"] = 1
+            hist["last_lap"] = lap
+            corner_history[dedup_key] = hist
+
+        consecutive_laps = corner_history[dedup_key]["consecutive_laps"]
+
+        if active_radio_event == dedup_key:
+            comm["state"] = "RADIO_NOW"
+            comm["should_speak"] = True
+            comm["cooldown_remaining"] = max(0, cooldowns.get(dedup_key, 0) - elapsed)
+
+            if is_tyre_alert_condition:
+                comm["category"] = "TYRE_ALERT"
+                comm["priority"] = "HIGH" if cliff_prob >= 0.80 else "MEDIUM"
+                comm["reason"] = f"Tyre cliff alert (Cliff prob: {cliff_prob * 100:.0f}%, wear: {wear_rate:.3f}s/lap)"
+                sample["analysis"]["diagnosis"] = "TYRE_CLIFF_ALERT"
+                sample["analysis"]["message"] = f"Tyre degradation alert: cliff probability {cliff_prob * 100:.0f}%, wear rate {wear_rate:.3f}s/lap."
+                sample["analysis"]["advice"] = "Tyre cliff imminent. Prepare for pit stop or switch to tyre management delta."
+            elif dedup_key in llm_cache:
+                corner_response = llm_cache[dedup_key]
+                sample["analysis"]["message"] = corner_response.get("message", "Observation logged.")
+                sample["analysis"]["advice"] = corner_response.get("advice", "Keep pushing.")
+
+            sample["communication"] = comm
+            continue
+
+        # Check triggers
+        safe_confidence = confidence if confidence is not None else 0.0
+        meets_confidence = safe_confidence >= MIN_RADIO_CONFIDENCE
+        meets_moderate = (time_loss is not None and time_loss >= MIN_RADIO_TIME_LOSS and consecutive_laps >= MIN_RADIO_PERSISTENCE)
+        meets_immediate = (time_loss is not None and time_loss >= HIGH_SEVERITY_TIME_LOSS)
+        meets_strategic = has_race_event and (corner == "Straight" or diag in {"GOOD", "None", "NONE"})
+        meets_tyre = is_tyre_alert_condition and (consecutive_laps >= MIN_RADIO_PERSISTENCE or cliff_prob >= 0.80)
+
+        if (meets_confidence and (meets_moderate or meets_immediate)) or meets_strategic or meets_tyre:
+            last_loss = dedup_last_communicated_loss.get(dedup_key, 0)
+            materially_worse = (time_loss is not None and time_loss >= last_loss + MATERIAL_WORSENING_DELTA)
+            on_cooldown = elapsed < cooldowns.get(dedup_key, 0)
+
+            can_speak = False
+            if materially_worse or meets_tyre:
+                can_speak = not on_cooldown
+            elif not on_cooldown:
+                can_speak = True
+
+            if can_speak:
+                comm["state"] = "RADIO_NOW"
+                comm["should_speak"] = True
+                comm["priority"] = "HIGH" if (meets_immediate or cliff_prob >= 0.80) else "MEDIUM"
+
+                if meets_tyre:
+                    comm["category"] = "TYRE_ALERT"
+                    comm["reason"] = f"Tyre cliff alert (Cliff prob: {cliff_prob * 100:.0f}%, wear: {wear_rate:.3f}s/lap)"
+                elif meets_strategic:
+                    comm["reason"] = "Strategic race context"
+                else:
+                    comm["reason"] = f"{diag} at {corner} ({time_loss:.2f}s loss)"
+
+                cooldowns[dedup_key] = elapsed + RADIO_COOLDOWN_SECONDS
+                comm["cooldown_remaining"] = RADIO_COOLDOWN_SECONDS
+                dedup_last_communicated_loss[dedup_key] = time_loss if time_loss is not None else 0.0
+                active_radio_event = dedup_key
+
+                if meets_tyre:
+                    sample["analysis"]["diagnosis"] = "TYRE_CLIFF_ALERT"
+                    sample["analysis"]["message"] = f"Tyre degradation alert: cliff probability is {cliff_prob * 100:.0f}% with wear rate {wear_rate:.3f}s/lap."
+                    sample["analysis"]["advice"] = "Tyre cliff imminent. Prepare for pit stop or switch to tyre management delta."
+                else:
+                    metrics_dict = {
+                        corner: {
+                            "entry_speed_delta": sample.get("comparison", {}).get("entry_speed_delta", 0),
+                            "minimum_speed_delta": sample.get("comparison", {}).get("minimum_speed_delta", 0),
+                            "exit_speed_delta": sample.get("comparison", {}).get("exit_speed_delta", 0),
+                            "braking_delta": sample.get("comparison", {}).get("braking_delta", 0),
+                            "throttle_delay": sample.get("comparison", {}).get("throttle_delay", 0),
+                            "diagnosis": diag,
+                            "time_loss": time_loss,
+                            "race_context": sample.get("race_context", {})
+                        }
+                    }
+
+                    if dedup_key in llm_cache:
+                        corner_response = llm_cache[dedup_key]
+                    else:
+                        llm_response = generate_race_engineer_advice(metrics_dict)
+                        corner_response = llm_response.get(corner, {})
+                        llm_cache[dedup_key] = corner_response
+
+                        try:
+                            with open(LLM_CACHE_FILE, "w") as f:
+                                json.dump(llm_cache, f)
+                        except Exception as e:
+                            pass
+
+                    if corner_response:
+                        sample["analysis"]["message"] = corner_response.get("message", "Observation logged.")
+                        sample["analysis"]["advice"] = corner_response.get("advice", "Keep pushing.")
+
+        sample["communication"] = comm
+
+    return all_samples
+
+
 def get_live_analysis(session_key: int, target_driver: int):
     cache_key = f"live_analysis_{session_key}_{target_driver}"
     if cache_key in _cache:
@@ -92,6 +296,8 @@ def get_live_analysis(session_key: int, target_driver: int):
     if os.path.exists(cache_file):
         with open(cache_file, "r") as f:
             result = json.load(f)
+            result = _sanitize_straight_analysis(result)
+            result["samples"] = _apply_communication_gate(result.get("samples", []), session_key, target_driver)
             _cache[cache_key] = result
             return result
 
@@ -261,7 +467,20 @@ def get_live_analysis(session_key: int, target_driver: int):
 
             metrics = corner_metrics.get(current_corner)
 
-            if metrics:
+            if current_corner == "Straight":
+                comp = {
+                    "entry_speed_delta": 0, "minimum_speed_delta": 0, "exit_speed_delta": 0,
+                    "braking_delta": 0, "throttle_delay": 0
+                }
+                analysis = {
+                    "diagnosis": "NONE",
+                    "severity": "low",
+                    "estimated_time_delta": None,
+                    "confidence": None,
+                    "message": "No corner diagnosis in this section.",
+                    "advice": "No driver instruction required.",
+                }
+            elif metrics:
                 comp = {
                     "entry_speed_delta": metrics["entry_speed_delta"],
                     "minimum_speed_delta": metrics["minimum_speed_delta"],
@@ -282,9 +501,9 @@ def get_live_analysis(session_key: int, target_driver: int):
                     "entry_speed_delta": 0, "minimum_speed_delta": 0, "exit_speed_delta": 0,
                     "braking_delta": 0, "throttle_delay": 0
                 }
-                analysis = last_meaningful_advice if last_meaningful_advice else {
-                    "diagnosis": "GOOD", "severity": "low", "estimated_time_delta": 0,
-                    "confidence": 0.99, "advice": "Keep pushing."
+                analysis = {
+                    "diagnosis": "NONE", "severity": "low", "estimated_time_delta": None,
+                    "confidence": None, "advice": "Keep pushing."
                 }
 
             nx = ((row['x'] - min_x) / x_range) * 100 if x_range != 0 else 50
@@ -322,135 +541,7 @@ def get_live_analysis(session_key: int, target_driver: int):
 
     # Ensure all samples are strictly ordered by elapsed time
     all_samples.sort(key=lambda x: x['elapsed'])
-
-    # ------------------- COMMUNICATION GATE -------------------
-    MIN_RADIO_CONFIDENCE = 0.80
-    MIN_RADIO_TIME_LOSS = 0.10
-    HIGH_SEVERITY_TIME_LOSS = 0.20
-    MIN_RADIO_PERSISTENCE = 2  # consecutive laps
-    RADIO_COOLDOWN_SECONDS = 20
-    MATERIAL_WORSENING_DELTA = 0.10
-
-    corner_history = {} # corner_diagnosis -> { "last_lap": lap, "consecutive_laps": N }
-    dedup_last_communicated_loss = {} # corner_diagnosis -> last communicated time loss
-    cooldowns = {} # corner_diagnosis -> next_allowed_time
-    llm_cache = llm_cache_global
-
-    active_radio_event = None
-
-    for sample in all_samples:
-        elapsed = sample["elapsed"]
-        lap = sample["lap_number"]
-        corner = sample["current_corner"]["name"]
-        analysis = sample["analysis"]
-        diag = analysis.get("diagnosis", "GOOD")
-        time_loss = analysis.get("estimated_time_delta", 0)
-        confidence = analysis.get("confidence", 1.0)
-
-        dedup_key = f"{corner}_{diag}"
-
-        comm = {
-            "state": "MONITORING",
-            "should_speak": False,
-            "priority": None,
-            "reason": None,
-            "cooldown_remaining": max(0, cooldowns.get(dedup_key, 0) - elapsed)
-        }
-
-        if diag == "GOOD" or diag == "None" or corner == "Straight":
-            sample["communication"] = comm
-            active_radio_event = None
-            continue
-
-        comm["state"] = "ATTENTION"
-
-        # Track persistence by lap
-        hist = corner_history.get(dedup_key, {"last_lap": 0, "consecutive_laps": 0})
-        if hist["last_lap"] != lap:
-            if hist["last_lap"] == lap - 1:
-                hist["consecutive_laps"] += 1
-            else:
-                hist["consecutive_laps"] = 1
-            hist["last_lap"] = lap
-            corner_history[dedup_key] = hist
-
-        consecutive_laps = corner_history[dedup_key]["consecutive_laps"]
-
-        if active_radio_event == dedup_key:
-            comm["state"] = "RADIO_NOW"
-            comm["should_speak"] = True
-            comm["cooldown_remaining"] = max(0, cooldowns.get(dedup_key, 0) - elapsed)
-            sample["communication"] = comm
-
-            # Carry forward the LLM response from the cache
-            if dedup_key in llm_cache:
-                corner_response = llm_cache[dedup_key]
-                sample["analysis"]["message"] = corner_response.get("message", "Observation logged.")
-                sample["analysis"]["advice"] = corner_response.get("advice", "Keep pushing.")
-
-            continue
-
-        meets_confidence = confidence >= MIN_RADIO_CONFIDENCE
-        meets_moderate = (time_loss >= MIN_RADIO_TIME_LOSS and consecutive_laps >= MIN_RADIO_PERSISTENCE)
-        meets_immediate = (time_loss >= HIGH_SEVERITY_TIME_LOSS)
-
-        if meets_confidence and (meets_moderate or meets_immediate):
-            last_loss = dedup_last_communicated_loss.get(dedup_key, 0)
-            materially_worse = (time_loss >= last_loss + MATERIAL_WORSENING_DELTA)
-            on_cooldown = elapsed < cooldowns.get(dedup_key, 0)
-
-            can_speak = False
-            if materially_worse:
-                can_speak = True
-            elif not on_cooldown:
-                can_speak = True
-
-            if can_speak:
-                comm["state"] = "RADIO_NOW"
-                comm["should_speak"] = True
-                comm["priority"] = "HIGH" if meets_immediate else "MEDIUM"
-                comm["reason"] = f"{diag} at {corner} ({time_loss:.2f}s loss)"
-
-                cooldowns[dedup_key] = elapsed + RADIO_COOLDOWN_SECONDS
-                comm["cooldown_remaining"] = RADIO_COOLDOWN_SECONDS
-                dedup_last_communicated_loss[dedup_key] = time_loss
-                active_radio_event = dedup_key
-
-                print(f"Triggering RADIO_NOW for {corner}. Loss: {time_loss}s")
-
-                metrics_dict = {
-                    corner: {
-                        "entry_speed_delta": sample["comparison"].get("entry_speed_delta", 0),
-                        "minimum_speed_delta": sample["comparison"].get("minimum_speed_delta", 0),
-                        "exit_speed_delta": sample["comparison"].get("exit_speed_delta", 0),
-                        "braking_delta": sample["comparison"].get("braking_delta", 0),
-                        "throttle_delay": sample["comparison"].get("throttle_delay", 0),
-                        "diagnosis": diag,
-                        "time_loss": time_loss,
-                        "race_context": sample.get("race_context", {})
-                    }
-                }
-
-                if dedup_key in llm_cache:
-                    corner_response = llm_cache[dedup_key]
-                else:
-                    print(f"Generating AI advice for {dedup_key}...", flush=True)
-                    llm_response = generate_race_engineer_advice(metrics_dict)
-                    corner_response = llm_response.get(corner, {})
-                    llm_cache[dedup_key] = corner_response
-
-                    try:
-                        with open(LLM_CACHE_FILE, "w") as f:
-                            json.dump(llm_cache, f)
-                    except Exception as e:
-                        pass
-
-                if corner_response:
-                    sample["analysis"]["message"] = corner_response.get("message", "Observation logged.")
-                    sample["analysis"]["advice"] = corner_response.get("advice", "Keep pushing.")
-
-        sample["communication"] = comm
-    # ----------------------------------------------------------
+    all_samples = _apply_communication_gate(all_samples, session_key, target_driver)
 
     result = {
         "session_key": session_key,
@@ -458,6 +549,10 @@ def get_live_analysis(session_key: int, target_driver: int):
         "samples": all_samples
     }
 
-
     _cache[cache_key] = result
+    try:
+        with open(cache_file, "w") as f:
+            json.dump(result, f)
+    except Exception:
+        pass
     return result

@@ -93,5 +93,65 @@
     "message": "Target driver is losing 0.771s to benchmark driver, with top losses in T8 (0.421s) and T2 (0.34s).",
     "advice": "Focus on improving braking technique at T8 and increasing minimum speed at T2 for the next lap.",
     "status": "READY"
+  },
+  "9165:1:4:19": {
+    "message": "Focus on reducing the time loss in T18 by increasing entry speed to match NOR's pace, as LOW_MIN_SPEED is a recurring issue.",
+    "advice": "Increase entry speed at T18 and maintain it through the corner to minimize time loss.",
+    "status": "READY"
+  },
+  "9165:1:4:20": {
+    "message": "Focus on improving entry speed at T13 to match NOR's pace, as it accounts for the majority of your lap delta.",
+    "advice": "Increase entry speed at T13 by 71 km/h to minimize time loss and gain a competitive edge.",
+    "status": "READY"
+  },
+  "9165:1:4:21": {
+    "message": "Focus on improving entry speed at T6 and T5 to minimize time losses, and maintain a consistent minimum speed through T12.",
+    "advice": "Optimize your approach to T6 and T5 by increasing entry speed to reduce time loss, while maintaining a steady pace through T12.",
+    "status": "READY"
+  },
+  "9165:1:4:22": {
+    "message": "Focus on improving entry speed at T1 and T14 to match the benchmark driver's pace.",
+    "advice": "Increase entry speed by 2-3 km/h at these corners to gain 0.7 seconds of lap time.",
+    "status": "READY"
+  },
+  "9165:1:4:23": {
+    "message": "Focus on improving exit speed at T12 to minimize time loss and maintain pace.",
+    "advice": "Increase engine power output in the next lap to compensate for the low minimum speed at T12.",
+    "status": "READY"
+  },
+  "9165:1:4:24": {
+    "message": "Focus on improving entry speed at T6 and T18 to minimize time losses, leveraging NOR's strengths.",
+    "advice": "Increase entry speed at T6 and T18 by 1-2 km/h in the next lap.",
+    "status": "READY"
+  },
+  "9165:1:4:25": {
+    "message": "Focus on increasing minimum speed through T17 to match NOR's pace, as it accounts for the majority of lap delta.",
+    "advice": "Prioritize building up minimum speed through T17 in the next lap.",
+    "status": "READY"
+  },
+  "9165:1:4:61": {
+    "message": "The largest reliable loss is T4 at +0.241s. The benchmark shows a stronger good profile at T4.",
+    "advice": "Focus on T4 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:60": {
+    "message": "The largest reliable loss is T10 at +0.740s. The benchmark shows a stronger good profile at T10.",
+    "advice": "Focus on T10 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:59": {
+    "message": "The largest reliable loss is T13 at +0.619s. The benchmark shows a stronger low exit speed profile at T13.",
+    "advice": "Prioritize a cleaner exit from T13 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:4:62": {
+    "message": "The largest reliable loss is T19 at +0.700s. The benchmark shows a stronger low min speed profile at T19.",
+    "advice": "Protect minimum speed through T19 next lap.",
+    "status": "FALLBACK"
+  },
+  "9165:1:11:1": {
+    "message": "The largest reliable loss is T9 at +0.861s. PER carries 47 km/h more minimum speed at T9.",
+    "advice": "Protect minimum speed through T9 next lap.",
+    "status": "FALLBACK"
   }
 }

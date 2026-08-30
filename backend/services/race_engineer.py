@@ -1,6 +1,35 @@
 import os
 import json
+import socket
+import time
 import urllib.request
+import urllib.error
+from urllib.parse import urlparse
+
+_ollama_status = {"available": None, "checked_at": 0.0}
+
+def is_ollama_available(timeout: float = 0.08, cache_ttl: float = 10.0) -> bool:
+    """Fast circuit breaker check to avoid slow timeouts when Ollama isn't running."""
+    global _ollama_status
+    now = time.time()
+    if _ollama_status["available"] is not None and (now - _ollama_status["checked_at"]) < cache_ttl:
+        return _ollama_status["available"]
+    
+    url_env = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
+    try:
+        parsed = urlparse(url_env)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 11434
+        with socket.create_connection((host, port), timeout=timeout):
+            _ollama_status["available"] = True
+    except (OSError, Exception):
+        _ollama_status["available"] = False
+    
+    _ollama_status["checked_at"] = now
+    return _ollama_status["available"]
+
+def _get_default_model() -> str:
+    return os.getenv("OLLAMA_MODEL", "llama3.1:latest")
 
 def generate_race_engineer_advice(corner_metrics: dict) -> dict:
     """
@@ -8,9 +37,12 @@ def generate_race_engineer_advice(corner_metrics: dict) -> dict:
     Calls the LLM to generate natural race-engineer advice.
     Returns a dictionary mapping corner names to dicts containing 'message' and 'advice'.
     """
-    model = os.getenv("OLLAMA_MODEL", "llama3.1:latest")
+    if not is_ollama_available():
+        return _fallback_advice(corner_metrics)
 
-    url = "http://localhost:11434/api/chat"
+    model = _get_default_model()
+
+    url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
     headers = {
         "Content-Type": "application/json"
     }
@@ -73,7 +105,7 @@ Do not invent telemetry. Prioritize the single most important issue per corner.
 
     try:
         req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='POST')
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=1.5) as response:
             result = json.loads(response.read().decode('utf-8'))
             content = result.get('message', {}).get('content', '{}').strip()
 
@@ -140,10 +172,11 @@ def generate_voice_interpretation(payload: dict) -> dict:
     performance = context.get("performance", {})
     race_context = context.get("race_context", {})
     corner = context.get("corner") or "the current section"
+    is_straight = corner == "Straight"
 
     fallback = {
-        "message": f"The transmission is synchronized with {corner} telemetry.",
-        "advice": f"Keep monitoring {corner} and follow the deterministic car diagnosis.",
+        "message": "Recent radio provides driver context; no corner diagnosis is attached." if is_straight else f"The transmission is synchronized with {corner} telemetry.",
+        "advice": "Follow the team's race guidance and manage the current situation." if is_straight else f"Keep monitoring {corner} and follow the deterministic car diagnosis.",
         "status": "FALLBACK",
     }
     diagnosis = performance.get("diagnosis")
@@ -163,7 +196,7 @@ def generate_voice_interpretation(payload: dict) -> dict:
         fallback["message"] = f"The transmission is synchronized with exit-speed loss at {corner}."
         fallback["advice"] = f"Prioritize a clean exit and earlier acceleration from {corner}."
 
-    if not transcript:
+    if not transcript or not is_ollama_available():
         return fallback
 
     system_prompt = """You are an F1 race engineer interpreting already-extracted evidence.
@@ -172,6 +205,10 @@ Use only the supplied transcript, voice fields, telemetry, corner, phase, and ra
 Do not claim that emotion proves stress, fatigue, or a psychological state. Say voice state or vocal intensity.
 Do not invent values, labels, corners, positions, gaps, diagnoses, or causal relationships.
 If a field is null or missing, do not mention it.
+
+CRITICAL RULE FOR STRAIGHTS:
+If the current track section is a Straight, do NOT invent a corner-specific driving diagnosis (e.g., braking, throttle, entry speed). Treat the radio as STRATEGIC / RACE CONTEXT rather than a CORNER DRIVING DIAGNOSIS. Provide strategic race guidance instead of car-handling instruction if sufficient evidence exists. You must explicitly include the exact phrase 'Strategic/Race Context' in your message.
+
 Return ONLY valid JSON with exactly:
 {"message":"short observation","advice":"short actionable instruction"}
 """
@@ -183,17 +220,20 @@ Return ONLY valid JSON with exactly:
         "performance": performance,
         "race_context": race_context,
     }
+    
+    corner_diagnosis = "NONE" if is_straight else performance.get("diagnosis")
+    
     data = {
-        "model": os.getenv("OLLAMA_MODEL", "llama3.1:latest"),
+        "model": _get_default_model(),
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_payload)},
+            {"role": "user", "content": json.dumps({**user_payload, "current_track_section": corner, "corner_diagnosis": corner_diagnosis})},
         ],
         "format": "json",
         "stream": False,
         "options": {"temperature": 0.2},
     }
-    url = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+    url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 
     try:
         req = urllib.request.Request(
@@ -202,7 +242,7 @@ Return ONLY valid JSON with exactly:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=3.0) as response:
             result = json.loads(response.read().decode("utf-8"))
             content = result.get("message", {}).get("content", "{}").strip()
             if content.startswith("```"):
@@ -213,13 +253,17 @@ Return ONLY valid JSON with exactly:
             if not isinstance(message, str) or not isinstance(advice, str) or not message or not advice:
                 return fallback
             return {"message": message, "advice": advice, "status": "READY"}
-    except Exception as exc:
+    except urllib.error.HTTPError as exc:
         print(f"Voice Ollama interpretation unavailable: {exc}")
+        return fallback
+    except Exception as exc:
         return fallback
 
 
 def generate_lap_coaching_advice(payload: dict, fallback: dict) -> dict:
     """Generate one coaching instruction from one completed-lap comparison."""
+    if not is_ollama_available():
+        return fallback
     system_prompt = """You are an F1 race engineer coaching one completed lap.
 The deterministic comparison engine supplied all telemetry facts. Use only those facts.
 Do not invent or alter driver numbers, lap times, corner names, diagnoses, deltas, confidence, or benchmark strengths.
@@ -228,7 +272,7 @@ Return ONLY valid JSON with exactly:
 {"message":"one concise evidence-based observation","advice":"one concise next-lap instruction"}
 """
     data = {
-        "model": os.getenv("OLLAMA_MODEL", "llama3.1:latest"),
+        "model": _get_default_model(),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(payload)},
@@ -237,7 +281,7 @@ Return ONLY valid JSON with exactly:
         "stream": False,
         "options": {"temperature": 0.2},
     }
-    url = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+    url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
     try:
         req = urllib.request.Request(
             url,
@@ -245,7 +289,7 @@ Return ONLY valid JSON with exactly:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=3.0) as response:
             result = json.loads(response.read().decode("utf-8"))
             content = result.get("message", {}).get("content", "{}").strip()
             if content.startswith("```"):

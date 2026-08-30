@@ -1,0 +1,47 @@
+{
+  "session_key": 9165,
+  "driver_number": 20,
+  "validation_mode": "MID_STINT_HOLDOUT",
+  "is_multi_session": false,
+  "stints": {
+    "1": {
+      "compound": "HARD",
+      "split_lap": 10,
+      "train_laps_count": 9,
+      "holdout_laps_count": 9,
+      "frozen_predicted_wear_rate": -0.0253,
+      "frozen_predicted_interval": [
+        -0.0687,
+        0.018
+      ],
+      "frozen_predicted_cliff_lap": 42,
+      "confidence_at_freeze": "LOW_CONFIDENCE"
+    },
+    "2": {
+      "compound": "MEDIUM",
+      "split_lap": 32,
+      "train_laps_count": 8,
+      "holdout_laps_count": 8,
+      "frozen_predicted_wear_rate": 0.0285,
+      "frozen_predicted_interval": [
+        -0.0147,
+        0.0716
+      ],
+      "frozen_predicted_cliff_lap": 52,
+      "confidence_at_freeze": "LOW_CONFIDENCE"
+    },
+    "3": {
+      "compound": "MEDIUM",
+      "split_lap": 52,
+      "train_laps_count": 7,
+      "holdout_laps_count": 7,
+      "frozen_predicted_wear_rate": -0.033,
+      "frozen_predicted_interval": [
+        -0.0811,
+        0.0152
+      ],
+      "frozen_predicted_cliff_lap": 74,
+      "confidence_at_freeze": "LOW_CONFIDENCE"
+    }
+  }
+}

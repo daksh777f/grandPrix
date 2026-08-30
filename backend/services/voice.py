@@ -4,11 +4,11 @@ Hugging Face extracts speech and vocal-state signals. Ollama is only used
 afterward to phrase a race-engineer interpretation from structured evidence.
 """
 
-import hashlib
 import json
 import os
 import re
 import threading
+import torch
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,6 +20,7 @@ from data.singapore_2023_track import CORNERS
 from services.live_analysis import calculate_progress, load_driver_data, load_laps
 from services.race_context import get_race_context
 from services.race_engineer import generate_voice_interpretation
+from services.voice_identity import cache_stem, event_id
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -42,34 +43,6 @@ _cache_lock = threading.Lock()
 def _ensure_cache_dirs() -> None:
     for directory in (AUDIO_DIR, TRANSCRIPT_DIR, VOICE_ANALYSIS_DIR):
         os.makedirs(directory, exist_ok=True)
-
-
-def _safe_stem(session_key: int, driver_number: int, recording_url: str) -> str:
-    parsed_name = os.path.basename(urlparse(recording_url).path)
-    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", parsed_name) or "radio"
-    digest = hashlib.sha1(recording_url.encode("utf-8")).hexdigest()[:10]
-    return f"{session_key}_{driver_number}_{stem}_{digest}"
-
-
-def _event_id(
-    session_key: int,
-    driver_number: int,
-    timestamp: pd.Timestamp,
-    lap: int | None,
-    corner: str | None,
-    progress: float | None,
-) -> str:
-    """Return a stable identity for one radio/telemetry event."""
-    progress_key = "" if progress is None else f"{progress:.6f}"
-    canonical = "|".join([
-        str(session_key),
-        str(driver_number),
-        timestamp.isoformat(),
-        str(lap or ""),
-        corner or "",
-        progress_key,
-    ])
-    return f"radio_{hashlib.sha1(canonical.encode('utf-8')).hexdigest()[:16]}"
 
 
 def _read_json(path: str) -> dict[str, Any] | None:
@@ -148,7 +121,8 @@ def _get_pipeline(kind: str):
                 model=ASR_MODEL_ID,
                 token=token,
                 chunk_length_s=30,
-                device=-1,
+                device=0 if torch.cuda.is_available() else -1,
+                generate_kwargs={"language": "en"},
             )
         elif kind == "emotion" and _emotion_pipeline is None:
             from transformers import pipeline
@@ -159,7 +133,7 @@ def _get_pipeline(kind: str):
                 model=EMOTION_MODEL_ID,
                 token=token,
                 top_k=None,
-                device=-1,
+                device=0 if torch.cuda.is_available() else -1,
             )
 
     return _asr_pipeline if kind == "asr" else _emotion_pipeline
@@ -371,6 +345,17 @@ def _fallback_interpretation(transcript: str | None, voice: dict[str, Any], cont
     voice_state = voice.get("voice_state")
     emotion = voice.get("emotion")
 
+    if corner == "Straight":
+        if transcript:
+            observation = "Recent radio provides driver context during a straight; no corner diagnosis is attached."
+            advice = "Follow the team's race guidance and manage the current race situation."
+        else:
+            observation = "No corner diagnosis is attached to this straight section."
+            advice = "No driver instruction required."
+        if voice_state and voice_state != "UNAVAILABLE":
+            observation += f" Voice state is {voice_state.lower().replace('_', ' ')}."
+        return {"message": observation, "advice": advice, "status": "FALLBACK"}
+
     if diagnosis == "EARLY_BRAKING":
         advice = f"Release the brake progressively and carry more speed into {corner}."
         observation = f"The radio transmission aligns with an entry deficit at {corner}."
@@ -400,7 +385,10 @@ def _fallback_interpretation(transcript: str | None, voice: dict[str, Any], cont
 def _interpret(transcript: str | None, voice: dict[str, Any], context: dict[str, Any], cache_path: str) -> dict[str, str] | None:
     cached = _read_json(cache_path)
     if cached is not None and cached.get("status") in {"READY", "FALLBACK"}:
-        return cached
+        if context.get("corner") == "Straight" and "Straight telemetry" in str(cached.get("message", "")):
+            cached = None
+        else:
+            return cached
 
     if not transcript:
         return None
@@ -444,12 +432,20 @@ def get_voice_intelligence(session_key: int, driver_number: int) -> dict[str, An
     session_start = session_start_value if pd.notna(session_start_value) else None
     messages = []
 
+    try:
+        from services.tyre_state import get_driver_tyre_state
+    except ImportError:
+        from backend.services.tyre_state import get_driver_tyre_state
+
+    tyre_state_res = get_driver_tyre_state(session_key, driver_number)
+    tyre_lap_lookup = tyre_state_res.get("lap_lookup", {})
+
     for _, row in radio_df.iterrows():
         recording_url = str(row.get("recording_url", "")).strip()
         if not recording_url or recording_url == "nan":
             continue
 
-        stem = _safe_stem(session_key, driver_number, recording_url)
+        stem = cache_stem(session_key, driver_number, recording_url)
         cached_file_name = f"{stem}.mp3"
         cached_audio_path = os.path.join(AUDIO_DIR, cached_file_name)
         legacy_file_name = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(urlparse(recording_url).path))
@@ -486,10 +482,10 @@ def get_voice_intelligence(session_key: int, driver_number: int) -> dict[str, An
         interpretation_path = os.path.join(VOICE_ANALYSIS_DIR, f"{stem}_interpretation.json")
         interpretation = _interpret(transcript_data.get("transcript"), emotion_data, context, interpretation_path)
 
-        event_id = _event_id(
+        radio_event_id = event_id(
             session_key,
             driver_number,
-            timestamp,
+            timestamp.isoformat(),
             context["lap"],
             context["corner"],
             context["progress"],
@@ -500,8 +496,34 @@ def get_voice_intelligence(session_key: int, driver_number: int) -> dict[str, An
 
         local_audio_url = f"/audio/{file_name}" if audio_available else None
         performance = context["performance"]
+
+        msg_lap = context["lap"]
+        tyre_rec = tyre_lap_lookup.get(msg_lap) if msg_lap is not None else None
+        tyre_wear_rate = round(float(tyre_rec.get("wear_rate_estimate", 0.035)), 4) if tyre_rec else 0.035
+        cliff_prob = round(float(tyre_rec.get("cliff_probability", 0.0)), 3) if tyre_rec else 0.0
+        tyre_health_pct = round(float(tyre_rec.get("tyre_health_pct", 100.0)), 1) if tyre_rec else 100.0
+
+        # Voice-Tyre Correlation Scorer Rule:
+        # High tyre stress condition: cliff_probability >= 0.30 or tyre_wear_rate >= 0.055 or tyre_health_pct <= 65.0
+        # High driver vocal stress: voice_state in {"HIGH_INTENSITY", "ELEVATED"} or vocal_arousal == "HIGH"
+        # If vocal stress matches physical tyre stress -> "CONFIRMED". If they diverge -> "MISMATCH".
+        is_high_tyre_stress = bool(cliff_prob >= 0.30 or tyre_wear_rate >= 0.055 or tyre_health_pct <= 65.0)
+        v_state = emotion_data.get("voice_state", "UNAVAILABLE")
+        v_arousal = emotion_data.get("vocal_arousal", "MEDIUM")
+        is_high_voice_stress = bool(v_state in {"HIGH_INTENSITY", "ELEVATED"} or v_arousal == "HIGH")
+
+        if is_high_tyre_stress == is_high_voice_stress:
+            alignment = "CONFIRMED"
+            alignment_desc = "Driver vocal tone and physical tyre degradation state are mutually consistent."
+        else:
+            alignment = "MISMATCH"
+            if is_high_voice_stress and not is_high_tyre_stress:
+                alignment_desc = "Driver vocal tone indicates high stress, but physical tyre telemetry is healthy (phantom tyre grip complaint)."
+            else:
+                alignment_desc = "Driver vocal tone is calm, but physical tyre telemetry indicates severe wear or cliff approach (silent degradation risk)."
+
         messages.append({
-            "event_id": event_id,
+            "event_id": radio_event_id,
             "timestamp": timestamp.isoformat(),
             "elapsed": elapsed,
             "driver_number": driver_number,
@@ -530,6 +552,11 @@ def get_voice_intelligence(session_key: int, driver_number: int) -> dict[str, An
             "race_context": context["race_context"],
             "communication": context["communication"],
             "ai_interpretation": interpretation,
+            "tyre_wear_rate": tyre_wear_rate,
+            "cliff_probability": cliff_prob,
+            "tyre_health_pct": tyre_health_pct,
+            "voice_tyre_alignment": alignment,
+            "voice_tyre_alignment_description": alignment_desc,
         })
 
     return {
