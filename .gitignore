@@ -23,3 +23,28 @@ data/radio_audio/*.part
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS / editor
+.idea/
+
+# Logs
+*.log
+
+# Node
+build/
+.next/
+out/
+.vercel/
+npm-debug.log*
+yarn-error.log*
+
+# Python
+.ipynb_checkpoints/
+.pytest_cache/
