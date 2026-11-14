@@ -419,13 +419,6 @@ npm run build
 - **Live OpenF1 WebSocket Connector**: Replace local file replay with an asynchronous WebSocket listener for real-time live race weekend ingestion.
 - **Acoustic Pitch and Formant Analysis**: Integrate fundamental frequency ($F_0$) pitch tracking and spectral jitter analysis into the voice pipeline to supplement Wav2Vec2 classifications with raw acoustic stress biomarkers.
 
-## Team
-
-- Daksh Goel ([@daksh777f](https://github.com/daksh777f))
-- Chirag Aggarwal ([@Chirag-agg](https://github.com/Chirag-agg))
-
-<!-- TODO (Daksh): after each name, add one line on what that person built, e.g. "backend API and data pipeline". Hidden comments like this one do not show on GitHub. -->
-
 ## License
 
 This project is developed as an engineering prototype for educational and hackathon evaluation purposes. All Formula 1 timing, telemetry, and audio assets remain the property of their respective rights holders.
